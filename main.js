@@ -188,7 +188,7 @@ function animate() {
 
   // --- MOVEMENT (WASD relative to camera facing) ---
   // Only apply movement when pointer is locked and game is in PLAYING state.
-  if (controls.isLocked && gameState === 'PLAYING') {
+  if (controls.isLocked && (gameState === 'PLAYING' || gameState === 'ABDUCTING')) {
     // Get camera's forward (on XZ plane) and right vectors
     camera.getWorldDirection(forwardDir);
     forwardDir.y = 0;
@@ -246,6 +246,12 @@ function animate() {
 
     // --- G005: STALKER AI — chase, stare, and visibility ---
     updateStalker(delta, forwardDir);
+
+    // --- ABDUCTION cinematic (if active) ---
+    updateAbduction(delta);
+
+    // If abducting, skip other game logic
+    if (gameState === 'ABDUCTING') { renderer.render(scene, camera); return; }
 
     // --- VISUAL: Update dust particles (drift + recycle) ---
     updateParticles(delta);
@@ -1296,17 +1302,122 @@ function updateParticles(delta) {
  * Trigger Game Over with a reason message.
  * @param {string} reason — displayed on the Game Over screen
  */
+// ============================================================================
+// ABDUCTION SEQUENCE — state + update + trigger
+// ============================================================================
+// When the player dies (contact or stare), instead of immediate Game Over,
+// a UFO descends, a light beam shines down, and the camera floats upward
+// into the beam — classic alien abduction cinematic.
+
+const abduction = {
+  active: false,
+  elapsed: 0,
+  reason: '',
+  startY: 0,      // Camera Y at abduction start
+  ufoStartY: 30,  // UFO starting height
+};
+
+/**
+ * Start the abduction sequence.
+ * @param {string} reason — displayed on Game Over screen after abduction
+ */
 function triggerGameOver(reason) {
-  gameState = 'GAME_OVER';
-  controls.unlock();
-  gameOverReason.textContent = reason;
-  gameOverScreen.classList.remove('hidden');
-  hudEl.style.display = 'none';
-  // Stop all audio on death
+  if (abduction.active) return; // Already abducting
+  abduction.active = true;
+  abduction.elapsed = 0;
+  abduction.reason = reason;
+  abduction.startY = camera.position.y;
+  gameState = 'ABDUCTING';
+  controls.unlock(); // Player can't move during abduction
+  // Show UFO above the player
+  ufo.position.set(camera.position.x, 30, camera.position.z);
+  ufo.visible = true;
+  // Stop stalker chase
+  updateStalker = () => {}; // Disable stalker AI during abduction
+  // Stop audio
   if (audioState.ambience) audioState.ambience.stop();
   if (audioState.static) audioState.static.stop();
   setStaticIntensity(0);
-  console.log('GAME OVER:', reason);
+  console.log('ABDUCTION:', reason);
+}
+
+/**
+ * Update abduction animation each frame. Called from main animation loop.
+ * Phases: 0-1.5s UFO descends → 1.5-3.5s camera floats up → 3.5-5s fade to white
+ * @param {number} delta
+ */
+function updateAbduction(delta) {
+  if (!abduction.active) return;
+  abduction.elapsed += delta;
+  const t = abduction.elapsed;
+
+  // Phase 1: UFO descends (0 → 1.5s)
+  if (t < 1.5) {
+    const progress = t / 1.5;
+    // Ease out: slow down as UFO approaches
+    const eased = 1 - Math.pow(1 - progress, 3);
+    ufo.position.set(camera.position.x, 30 - eased * 22, camera.position.z); // 30 → 8
+    // Activate beam light gradually
+    beamLight.intensity = eased * 8;
+    beam.material.opacity = eased * 0.18;
+  } else {
+    ufo.position.set(camera.position.x, 8, camera.position.z);
+    beamLight.intensity = 8;
+    beam.material.opacity = 0.18;
+  }
+
+  // Phase 2: Camera floats up into the beam (1.5 → 3.5s)
+  if (t > 1.5 && t < 3.5) {
+    const floatProgress = (t - 1.5) / 2.0;
+    const eased = floatProgress * floatProgress; // Accelerates upward
+    camera.position.y = abduction.startY + eased * 15;
+    // Tilt camera upward slowly to look at UFO
+    camera.rotation.x = -eased * 0.6;
+    // Narrow FOV for tunnel vision effect
+    camera.fov = 75 - eased * 25;
+    camera.updateProjectionMatrix();
+  }
+
+  // Phase 3: Screen fades to white (3.5 → 5.0s)
+  if (t > 3.5 && t < 5.0) {
+    const fadeProgress = (t - 3.5) / 1.5;
+    const opacity = Math.min(fadeProgress * fadeProgress, 1);
+    const overlay = document.getElementById('abduction-overlay');
+    if (overlay) {
+      overlay.style.opacity = opacity;
+      overlay.style.display = 'block';
+    }
+  }
+
+  // Phase 4: Show Game Over screen (after 5s)
+  if (t > 5.0) {
+    finishAbduction();
+  }
+}
+
+function finishAbduction() {
+  abduction.active = false;
+  gameState = 'GAME_OVER';
+  ufo.visible = false;
+  beamLight.intensity = 0;
+  beam.material.opacity = 0.12;
+  // Hide white overlay
+  const overlay = document.getElementById('abduction-overlay');
+  if (overlay) overlay.style.display = 'none';
+  // Reset camera
+  camera.rotation.x = 0;
+  camera.fov = 75;
+  camera.updateProjectionMatrix();
+  // Update title
+  if (abduction.reason.includes('stare')) {
+    gameOverTitle.textContent = 'YOU STARED TOO LONG';
+  } else {
+    gameOverTitle.textContent = 'GAME OVER';
+  }
+  gameOverReason.textContent = abduction.reason;
+  gameOverScreen.classList.remove('hidden');
+  hudEl.style.display = 'none';
+  console.log('GAME OVER:', abduction.reason);
 }
 
 // ============================================================================
@@ -1419,6 +1530,80 @@ function setStaticIntensity(level) {
 console.log('[Audio] System ready — ambient, footsteps, TV static');
 
 // ============================================================================
+// ABDUCTION: UFO + light beam for Game Over cinematic
+// ============================================================================
+// Classic flying saucer: wide disc body + dome on top + lights around rim.
+// Light beam is a transparent cone with a bright PointLight inside.
+// The UFO starts hidden (offscreen above), descends during Game Over.
+
+const ufo = new THREE.Group();
+ufo.visible = false;
+ufo.name = 'ufo';
+
+// --- Main saucer body (wide tapered disc) ---
+const saucerBody = new THREE.Mesh(
+  new THREE.CylinderGeometry(1.2, 2.0, 0.5, 16),
+  new THREE.MeshStandardMaterial({ color: 0x8899aa, roughness: 0.4, metalness: 0.8, flatShading: true })
+);
+saucerBody.position.y = 0;
+saucerBody.castShadow = true;
+ufo.add(saucerBody);
+
+// --- Dome (half sphere on top of saucer) ---
+const dome = new THREE.Mesh(
+  new THREE.SphereGeometry(0.65, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+  new THREE.MeshStandardMaterial({ color: 0x667788, roughness: 0.3, metalness: 0.7, flatShading: true })
+);
+dome.position.y = 0.2;
+dome.castShadow = true;
+ufo.add(dome);
+
+// --- Bottom protrusion (small cylinder under saucer) ---
+const under = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.15, 0.3, 0.4, 8),
+  new THREE.MeshStandardMaterial({ color: 0x556677, roughness: 0.5, metalness: 0.6, flatShading: true })
+);
+under.position.y = -0.45;
+ufo.add(under);
+
+// --- Rim lights (small glowing orbs around the saucer edge) ---
+const rimLightGeom = new THREE.SphereGeometry(0.08, 6, 6);
+const rimLightMat = new THREE.MeshStandardMaterial({ color: 0xaaccff, emissive: 0xaaccff, emissiveIntensity: 2.0 });
+const rimLightsCount = 8;
+for (let i = 0; i < rimLightsCount; i++) {
+  const angle = (i / rimLightsCount) * Math.PI * 2;
+  const light = new THREE.Mesh(rimLightGeom, rimLightMat);
+  light.position.set(Math.cos(angle) * 1.6, -0.15, Math.sin(angle) * 1.6);
+  ufo.add(light);
+}
+
+// --- Light beam (transparent cone from bottom of UFO to ground) ---
+const beamGeom = new THREE.CylinderGeometry(0.1, 3.0, 20, 16, 1, true);
+const beamMat = new THREE.MeshBasicMaterial({
+  color: 0xaaddff,
+  transparent: true,
+  opacity: 0.12,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
+const beam = new THREE.Mesh(beamGeom, beamMat);
+beam.position.y = -10.2; // extends from UFO down to ground
+beam.name = 'abductionBeam';
+ufo.add(beam);
+
+// --- Bright PointLight at bottom of UFO (inside beam) ---
+const beamLight = new THREE.PointLight(0xaaddff, 0, 30);
+beamLight.position.y = -1;
+beamLight.name = 'beamLight';
+ufo.add(beamLight);
+
+// --- UFO position: starts high above, hidden ---
+ufo.position.set(0, 30, 0);
+scene.add(ufo);
+
+console.log('[UFO] Abduction saucer + beam built (starts hidden)');
+
+// ============================================================================
 // G006: GAME LOOP — HUD, states, restart
 // ============================================================================
 // HUD elements (crosshair, anomaly counter, stare meter) are already wired
@@ -1440,21 +1625,6 @@ document.addEventListener('keydown', (e) => {
     restartGame();
   }
 });
-
-// --- Adjust Game Over title based on cause ---
-// triggerGameOver() is called from G005 with a reason string.
-// We patch it to also update the title for specific causes.
-const originalTriggerGameOver = triggerGameOver;
-triggerGameOver = function(reason) {
-  if (reason.includes('contact') || reason.includes('caught')) {
-    gameOverTitle.textContent = 'GAME OVER';
-    gameOverTitle.style.color = '#cc3333';
-  } else if (reason.includes('stare') || reason.includes('void')) {
-    gameOverTitle.textContent = 'YOU STARED TOO LONG';
-    gameOverTitle.style.color = '#ff6644';
-  }
-  originalTriggerGameOver(reason);
-};
 
 console.log('[Signs: Harvest Night] G006 game loop initialized.');
 console.log('  States: MENU → PLAYING → GAME_OVER | WIN');
