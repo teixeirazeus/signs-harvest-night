@@ -1307,7 +1307,7 @@ function updateParticles(delta) {
 // ============================================================================
 // When the player dies (contact or stare), instead of immediate Game Over,
 // a UFO descends, a light beam shines down, and the camera floats upward
-// into the beam — classic alien abduction cinematic.
+// into the beam — classic alien abduction cinematic. Total: ~2.3 seconds.
 
 const abduction = {
   active: false,
@@ -1343,7 +1343,7 @@ function triggerGameOver(reason) {
 
 /**
  * Update abduction animation each frame. Called from main animation loop.
- * Phases: 0-1.5s UFO descends → 1.5-3.5s camera floats up → 3.5-5s fade to white
+ * FAST PACED (~2.3s total): 0-0.6s UFO descends → 0.6-1.6s float → 1.6-2.3s fade
  * @param {number} delta
  */
 function updateAbduction(delta) {
@@ -1351,36 +1351,32 @@ function updateAbduction(delta) {
   abduction.elapsed += delta;
   const t = abduction.elapsed;
 
-  // Phase 1: UFO descends (0 → 1.5s)
-  if (t < 1.5) {
-    const progress = t / 1.5;
-    // Ease out: slow down as UFO approaches
-    const eased = 1 - Math.pow(1 - progress, 3);
+  // Phase 1: UFO descends (0 → 0.6s) — fast, dramatic drop
+  if (t < 0.6) {
+    const progress = t / 0.6;
+    const eased = 1 - Math.pow(1 - progress, 2); // Quadratic ease-out
     ufo.position.set(camera.position.x, 30 - eased * 22, camera.position.z); // 30 → 8
-    // Activate beam light gradually
-    beamLight.intensity = eased * 8;
-    beam.material.opacity = eased * 0.18;
+    beamLight.intensity = eased * 10;
+    beam.material.opacity = eased * 0.2;
   } else {
     ufo.position.set(camera.position.x, 8, camera.position.z);
-    beamLight.intensity = 8;
-    beam.material.opacity = 0.18;
+    beamLight.intensity = 10;
+    beam.material.opacity = 0.2;
   }
 
-  // Phase 2: Camera floats up into the beam (1.5 → 3.5s)
-  if (t > 1.5 && t < 3.5) {
-    const floatProgress = (t - 1.5) / 2.0;
+  // Phase 2: Camera floats up into the beam (0.6 → 1.6s)
+  if (t > 0.6 && t < 1.6) {
+    const floatProgress = (t - 0.6) / 1.0;
     const eased = floatProgress * floatProgress; // Accelerates upward
-    camera.position.y = abduction.startY + eased * 15;
-    // Tilt camera upward slowly to look at UFO
-    camera.rotation.x = -eased * 0.6;
-    // Narrow FOV for tunnel vision effect
-    camera.fov = 75 - eased * 25;
+    camera.position.y = abduction.startY + eased * 10;
+    camera.rotation.x = -eased * 0.7;
+    camera.fov = 75 - eased * 30;
     camera.updateProjectionMatrix();
   }
 
-  // Phase 3: Screen fades to white (3.5 → 5.0s)
-  if (t > 3.5 && t < 5.0) {
-    const fadeProgress = (t - 3.5) / 1.5;
+  // Phase 3: Screen fades to white (1.6 → 2.3s)
+  if (t > 1.6 && t < 2.3) {
+    const fadeProgress = (t - 1.6) / 0.7;
     const opacity = Math.min(fadeProgress * fadeProgress, 1);
     const overlay = document.getElementById('abduction-overlay');
     if (overlay) {
@@ -1389,8 +1385,8 @@ function updateAbduction(delta) {
     }
   }
 
-  // Phase 4: Show Game Over screen (after 5s)
-  if (t > 5.0) {
+  // Phase 4: Show Game Over screen (after 2.3s)
+  if (t > 2.3) {
     finishAbduction();
   }
 }
