@@ -1066,6 +1066,12 @@ function randomEdgePosition() {
 
 const spawnPos = randomEdgePosition();
 stalkerGroup.position.set(spawnPos.x, 0.05, spawnPos.z);
+
+// Scale entire alien to Grey-appropriate height: ~1.4u (~35% of original 4.0u).
+// Classic Greys are 1.0-1.5m — at or below the player's eye level (1.7u).
+// This puts the top of the alien's head roughly at the player's chest.
+stalkerGroup.scale.set(0.35, 0.35, 0.35);
+
 scene.add(stalkerGroup);
 
 console.log(`  Stalker spawned at (${spawnPos.x.toFixed(1)}, ${spawnPos.z.toFixed(1)})`);
