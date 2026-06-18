@@ -100,6 +100,11 @@ controls.addEventListener('lock', () => {
   hudEl.style.display = 'block';
   if (gameState === 'MENU') {
     gameState = 'PLAYING';
+    // Start audio on first user interaction
+    initAudio();
+    if (audioState.ambience && !audioState.ambience.playing()) {
+      audioState.ambience.play();
+    }
     console.log('Game started — explore the cornfield. Find 5 anomalies.');
   }
 });
@@ -259,6 +264,22 @@ function animate() {
         anomaly.glowLight.intensity = ANOMALY_GLOW_INTENSITY * pulse;
       }
     }
+
+    // --- AUDIO: Footsteps (triggered every ~0.45s while moving) ---
+    const isMoving = keyState.KeyW || keyState.KeyA || keyState.KeyS || keyState.KeyD;
+    if (isMoving) {
+      audioState.footstepTimer += delta;
+      if (audioState.footstepTimer > 0.45) {
+        audioState.footstepTimer = 0;
+        playFootstep();
+      }
+    } else {
+      audioState.footstepTimer = 0;
+    }
+
+    // --- AUDIO: TV static intensity based on stare ---
+    const staticLevel = stareTime / STARE_TIME_MAX;
+    setStaticIntensity(staticLevel);
   }
 
   // --- RENDER ---
@@ -1281,6 +1302,10 @@ function triggerGameOver(reason) {
   gameOverReason.textContent = reason;
   gameOverScreen.classList.remove('hidden');
   hudEl.style.display = 'none';
+  // Stop all audio on death
+  if (audioState.ambience) audioState.ambience.stop();
+  if (audioState.static) audioState.static.stop();
+  setStaticIntensity(0);
   console.log('GAME OVER:', reason);
 }
 
@@ -1320,6 +1345,78 @@ scene.traverse((node) => {
 });
 
 console.log('[PSX] Flat shading + NearestFilter applied to all scene materials');
+
+// ============================================================================
+// AUDIO: Howler.js — ambient, footsteps, TV static
+// ============================================================================
+// All sounds loaded lazily from the sounds/ directory.
+// Uses window.Howl (loaded via CDN script tag in index.html).
+
+const Howl = window.Howl;
+let audioReady = false;
+const audioState = { ambience: null, static: null, footstepTimer: 0 };
+
+// --- Load sounds ---
+// Ambience: looping night forest track, low volume (atmospheric background).
+function initAudio() {
+  if (audioReady) return;
+  audioReady = true;
+
+  // Night ambience
+  audioState.ambience = new Howl({
+    src: ['sounds/night_forest_ambience.mp3', 'sounds/crickets_ambient.mp3'],
+    loop: true,
+    volume: 0.25,
+    autoplay: false,
+  });
+
+  // TV static — single short clip that can be faded in/out
+  audioState.static = new Howl({
+    src: ['sounds/tv_static.mp3'],
+    loop: true,
+    volume: 0,
+    autoplay: false,
+  });
+
+  // Footstep sounds — pick randomly from available grass steps
+  const stepNames = [];
+  for (let i = 0; i <= 9; i++) {
+    stepNames.push(`sounds/step_grass_${i}.ogg`);
+  }
+  stepNames.push('sounds/mud02.ogg');
+  audioState.footsteps = stepNames.map(src => new Howl({
+    src: [src],
+    volume: 0.5,
+  }));
+  audioState.lastStep = 0;
+
+  console.log(`[Audio] ${audioState.footsteps.length} footstep variants loaded`);
+}
+
+// --- Play one random footstep ---
+function playFootstep() {
+  if (!audioReady) return;
+  const steps = audioState.footsteps;
+  // Vary pitch slightly for organic feel (rate 0.9-1.1)
+  const idx = Math.floor(Math.random() * steps.length);
+  const rate = 0.9 + Math.random() * 0.2;
+  steps[idx].rate(rate).play();
+}
+
+// --- TV static: set intensity (0 = silent, 1 = full) ---
+function setStaticIntensity(level) {
+  if (!audioReady || !audioState.static) return;
+  const clamped = Math.max(0, Math.min(1, level));
+  if (clamped > 0.01 && !audioState.static.playing()) {
+    audioState.static.play();
+  }
+  audioState.static.volume(clamped * 0.6); // Max volume 60%
+  if (clamped < 0.01 && audioState.static.playing()) {
+    audioState.static.stop();
+  }
+}
+
+console.log('[Audio] System ready — ambient, footsteps, TV static');
 
 // ============================================================================
 // G006: GAME LOOP — HUD, states, restart
