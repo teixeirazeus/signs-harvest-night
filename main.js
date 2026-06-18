@@ -17,9 +17,6 @@
 
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 // ============================================================================
 // DOM REFERENCES
@@ -76,67 +73,6 @@ const camera = new THREE.PerspectiveCamera(
 );
 camera.position.set(0, 1.7, 0); // Eye height ~1.7 units (average human)
 scene.add(camera);
-
-// ============================================================================
-// PSX: EffectComposer + retro post-processing
-// ============================================================================
-// Combined PSX shader pass: color quantization (5-bit → 32 steps per channel)
-// + Bayer ordered dithering + PS1-style abrupt fog dithering.
-// Placed here after scene + camera are created (RenderPass needs them).
-
-const composer = new EffectComposer(renderer);
-const renderPass = new RenderPass(scene, camera);
-composer.addPass(renderPass);
-
-// PSX ShaderPass — quantization + Bayer dithering in one fragment pass
-const PSXPass = new ShaderPass({
-  uniforms: {
-    tDiffuse: { value: null },
-    uColorSteps: { value: 31.0 },      // 5-bit per channel (0-31)
-    uDitherStrength: { value: 1.5 },   // Dither intensity
-  },
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: `
-    uniform sampler2D tDiffuse;
-    uniform float uColorSteps;
-    uniform float uDitherStrength;
-    varying vec2 vUv;
-
-    // 4×4 Bayer matrix — ordered dithering pattern
-    const float bayer[16] = float[](
-       0.0/16.0,  8.0/16.0,  2.0/16.0, 10.0/16.0,
-      12.0/16.0,  4.0/16.0, 14.0/16.0,  6.0/16.0,
-       3.0/16.0, 11.0/16.0,  1.0/16.0,  9.0/16.0,
-      15.0/16.0,  7.0/16.0, 13.0/16.0,  5.0/16.0
-    );
-
-    void main() {
-      vec4 color = texture2D(tDiffuse, vUv);
-
-      // Color quantization — reduce to PS1-like 5-bit (32 steps)
-      vec3 quantized = floor(color.rgb * uColorSteps) / uColorSteps;
-
-      // Bayer dithering — adds organized noise to smooth gradients,
-      // mimicking the PS1 framebuffer's 15-bit dither pattern.
-      int ix = int(mod(gl_FragCoord.x, 4.0));
-      int iy = int(mod(gl_FragCoord.y, 4.0));
-      float dither = (bayer[iy * 4 + ix] - 0.5) * uDitherStrength;
-
-      // Apply dither as a threshold offset before quantizing
-      vec3 dithered = color.rgb + dither * (1.0 / uColorSteps);
-      vec3 final = floor(dithered * uColorSteps) / uColorSteps;
-
-      gl_FragColor = vec4(final, color.a);
-    }
-  `
-});
-composer.addPass(PSXPass);
 
 // ============================================================================
 // POINTER LOCK CONTROLS — First-person mouse look + WASD
@@ -325,8 +261,8 @@ function animate() {
     }
   }
 
-  // --- RENDER (PSX post-processing) ---
-  composer.render();
+  // --- RENDER ---
+  renderer.render(scene, camera);
 }
 
 // ============================================================================
@@ -338,18 +274,17 @@ function animate() {
 // --- SKY / BACKGROUND ---
 // Deep night sky — near-black with faint navy tint.
 scene.background = new THREE.Color(0x050510);
-scene.fog = new THREE.FogExp2(0x0a0a18, 0.08); // Exponential fog: dark blue-grey, thick
+scene.fog = new THREE.FogExp2(0x0a0a18, 0.04); // Exponential fog: dark blue-grey, playable PSX-style
 
 // --- AMBIENT LIGHT ---
-// Minimal global illumination — just enough to perceive silhouettes at very close range.
-// This keeps the cornfield oppressive and forces flashlight reliance.
-const ambientLight = new THREE.AmbientLight(0x111133, 0.3);
+// Minimal global illumination — bumped for PSX branch to compensate for
+// quantization. 0.6 intensity + 0x222244 gives enough silhouette definition.
+const ambientLight = new THREE.AmbientLight(0x222244, 0.6);
 scene.add(ambientLight);
 
 // --- MOONLIGHT (faint directional) ---
-// Subtle directional light from above to cast faint shadows and provide minimal
-// silhouette definition. Low intensity so flashlight remains the primary light source.
-const moonLight = new THREE.DirectionalLight(0x8899cc, 0.4);
+// Increased to 0.8 for PSX branch — provides a cold blue wash over the scene.
+const moonLight = new THREE.DirectionalLight(0x8899cc, 0.8);
 moonLight.position.set(30, 50, -20);
 moonLight.castShadow = true;
 moonLight.shadow.mapSize.width = 1024;
@@ -384,7 +319,10 @@ scene.add(ground);
 // actively scan. Yellow-white temperature (0xfff8e7) for incandescent flashlight feel.
 // Penumbra 0.3 gives soft edges — realistic flashlight falloff.
 // Decay 1.5 ensures light doesn't reach too far through the fog.
-const flashlight = new THREE.SpotLight(0xfff8e7, 45, 25, Math.PI / 10, 0.3, 1.5);
+const flashlight = new THREE.SpotLight(0xfff8e7, 60, 30, Math.PI / 7, 0.3, 1.2);
+//                                    color     int dist cone(~25°) pen  decay
+// Bumped intensity 45→60, cone π/10→π/7 (wider beam for PSX visibility),
+// distance 25→30, decay 1.5→1.2 (reaches further through fog).
 flashlight.position.set(0, 0, 0); // Relative to camera — updated each frame
 flashlight.target.position.set(0, 0, -1); // Points forward from camera
 flashlight.castShadow = true;
@@ -487,10 +425,10 @@ console.log(`  Particles: ${PARTICLE_COUNT} dust motes in flashlight beam`);
 // --- Moon ---
 const moonGeom = new THREE.CircleGeometry(3, 16);   // Low-poly: 16 sides instead of 32
 const moonMat = new THREE.MeshBasicMaterial({
-  color: 0xeeeedd,
+  color: 0xfffff0,    // Brighter for PSX branch
   side: THREE.DoubleSide,
   transparent: true,
-  opacity: 0.7,
+  opacity: 0.85,      // Increased from 0.7
 });
 const moon = new THREE.Mesh(moonGeom, moonMat);
 moon.position.set(25, 42, -35);
@@ -550,13 +488,13 @@ starTexture.magFilter = THREE.NearestFilter;
 starTexture.minFilter = THREE.NearestFilter;
 
 const starMat = new THREE.PointsMaterial({
-  size: 0.5,
+  size: 0.7,          // Slightly larger for PSX resolution
   map: starTexture,
   blending: THREE.AdditiveBlending,
   depthWrite: false,
   transparent: true,
-  opacity: 0.7,
-  color: 0xaaccff,
+  opacity: 0.9,        // Brighter
+  color: 0xccddff,
 });
 
 const stars = new THREE.Points(starGeom, starMat);
