@@ -17,6 +17,9 @@
 
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 // ============================================================================
 // DOM REFERENCES
@@ -36,17 +39,28 @@ const stareMeterEl = document.getElementById('stare-meter');
 // CORE THREE.JS SETUP — Scene, Camera, Renderer
 // ============================================================================
 
-// --- RENDERER ---
-// Using WebGLRenderer with antialiasing for smooth edges on geometric primitives.
-// Shadow map will be enabled in G002 when we add the flashlight.
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Cap for perf
+// --- RENDERER (PSX-style) ---
+// Low resolution, no anti-aliasing, no tone mapping — authentic PS1 feel.
+// 640x480 internal resolution at native pixel ratio mimics the PS1's
+// 320x240 framebuffer scaled to typical displays.
+const PSX_WIDTH = 640;
+const PSX_HEIGHT = 480;
+const renderer = new THREE.WebGLRenderer({
+  antialias: false,          // PS1 has no AA
+  powerPreference: 'high-performance',
+});
+renderer.setSize(PSX_WIDTH, PSX_HEIGHT);
+renderer.setPixelRatio(1);   // No retina — 1:1 pixel mapping
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows for flashlight
-renderer.toneMapping = THREE.ACESFilmicToneMapping; // Cinematic tone mapping
-renderer.toneMappingExposure = 0.8;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.NoToneMapping;  // PS1 has no HDR
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
+
+// Scale canvas with CSS to fill viewport (preserves low-res rendering)
+renderer.domElement.style.width = '100%';
+renderer.domElement.style.height = '100%';
+renderer.domElement.style.imageRendering = 'pixelated'; // Crisp pixel scaling
 
 // --- SCENE ---
 const scene = new THREE.Scene();
@@ -56,12 +70,73 @@ const scene = new THREE.Scene();
 // Near clip at 0.1, far clip at 80 — fog will obscure beyond ~40.
 const camera = new THREE.PerspectiveCamera(
   75,                                             // FOV
-  window.innerWidth / window.innerHeight,          // Aspect
+  PSX_WIDTH / PSX_HEIGHT,                          // Aspect (4:3)
   0.1,                                            // Near clip
   80                                               // Far clip
 );
 camera.position.set(0, 1.7, 0); // Eye height ~1.7 units (average human)
 scene.add(camera);
+
+// ============================================================================
+// PSX: EffectComposer + retro post-processing
+// ============================================================================
+// Combined PSX shader pass: color quantization (5-bit → 32 steps per channel)
+// + Bayer ordered dithering + PS1-style abrupt fog dithering.
+// Placed here after scene + camera are created (RenderPass needs them).
+
+const composer = new EffectComposer(renderer);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+// PSX ShaderPass — quantization + Bayer dithering in one fragment pass
+const PSXPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uColorSteps: { value: 31.0 },      // 5-bit per channel (0-31)
+    uDitherStrength: { value: 1.5 },   // Dither intensity
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uColorSteps;
+    uniform float uDitherStrength;
+    varying vec2 vUv;
+
+    // 4×4 Bayer matrix — ordered dithering pattern
+    const float bayer[16] = float[](
+       0.0/16.0,  8.0/16.0,  2.0/16.0, 10.0/16.0,
+      12.0/16.0,  4.0/16.0, 14.0/16.0,  6.0/16.0,
+       3.0/16.0, 11.0/16.0,  1.0/16.0,  9.0/16.0,
+      15.0/16.0,  7.0/16.0, 13.0/16.0,  5.0/16.0
+    );
+
+    void main() {
+      vec4 color = texture2D(tDiffuse, vUv);
+
+      // Color quantization — reduce to PS1-like 5-bit (32 steps)
+      vec3 quantized = floor(color.rgb * uColorSteps) / uColorSteps;
+
+      // Bayer dithering — adds organized noise to smooth gradients,
+      // mimicking the PS1 framebuffer's 15-bit dither pattern.
+      int ix = int(mod(gl_FragCoord.x, 4.0));
+      int iy = int(mod(gl_FragCoord.y, 4.0));
+      float dither = (bayer[iy * 4 + ix] - 0.5) * uDitherStrength;
+
+      // Apply dither as a threshold offset before quantizing
+      vec3 dithered = color.rgb + dither * (1.0 / uColorSteps);
+      vec3 final = floor(dithered * uColorSteps) / uColorSteps;
+
+      gl_FragColor = vec4(final, color.a);
+    }
+  `
+});
+composer.addPass(PSXPass);
 
 // ============================================================================
 // POINTER LOCK CONTROLS — First-person mouse look + WASD
@@ -155,9 +230,10 @@ let anomaliesCollected = 0;
 // ============================================================================
 
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  // Fixed 4:3 resolution — scale canvas with CSS, not render size
+  // (PSX-style: internal resolution never changes, CSS stretches to fill)
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
 });
 
 // ============================================================================
@@ -249,8 +325,8 @@ function animate() {
     }
   }
 
-  // --- RENDER ---
-  renderer.render(scene, camera);
+  // --- RENDER (PSX post-processing) ---
+  composer.render();
 }
 
 // ============================================================================
@@ -294,6 +370,7 @@ const groundMaterial = new THREE.MeshStandardMaterial({
   color: 0x1a2a14,
   roughness: 0.95,
   metalness: 0.0,
+  flatShading: true,
 });
 const ground = new THREE.Mesh(groundGeometry, groundMaterial);
 ground.rotation.x = -Math.PI / 2;
@@ -352,6 +429,8 @@ gradient.addColorStop(1, 'rgba(0,0,0,0)');
 pctx.fillStyle = gradient;
 pctx.fillRect(0, 0, 32, 32);
 const particleTexture = new THREE.CanvasTexture(particleCanvas);
+particleTexture.magFilter = THREE.NearestFilter;
+particleTexture.minFilter = THREE.NearestFilter;
 
 // Particle geometry and state
 const particleGeom = new THREE.BufferGeometry();
@@ -406,7 +485,7 @@ console.log(`  Particles: ${PARTICLE_COUNT} dust motes in flashlight beam`);
 // against the otherwise pitch-black sky.
 
 // --- Moon ---
-const moonGeom = new THREE.CircleGeometry(3, 32);
+const moonGeom = new THREE.CircleGeometry(3, 16);   // Low-poly: 16 sides instead of 32
 const moonMat = new THREE.MeshBasicMaterial({
   color: 0xeeeedd,
   side: THREE.DoubleSide,
@@ -421,7 +500,7 @@ moon.name = 'moon';
 scene.add(moon);
 
 // Subtle moon glow halo
-const haloGeom = new THREE.CircleGeometry(4.5, 32);
+const haloGeom = new THREE.CircleGeometry(4.5, 16);  // Low-poly: 16 sides
 const haloMat = new THREE.MeshBasicMaterial({
   color: 0xccccdd,
   side: THREE.DoubleSide,
@@ -467,6 +546,8 @@ sg.addColorStop(1, 'rgba(0,0,0,0)');
 sctx.fillStyle = sg;
 sctx.fillRect(0, 0, 8, 8);
 const starTexture = new THREE.CanvasTexture(starCanvas);
+starTexture.magFilter = THREE.NearestFilter;
+starTexture.minFilter = THREE.NearestFilter;
 
 const starMat = new THREE.PointsMaterial({
   size: 0.5,
@@ -527,6 +608,7 @@ const stalkMat = new THREE.MeshStandardMaterial({
   color: 0xffffff,      // White base — instanceColor multiplies this
   roughness: 0.85,
   metalness: 0.0,
+  flatShading: true,
 });
 
 // --- InstancedMesh ---
@@ -614,6 +696,9 @@ cornfield.instanceMatrix.needsUpdate = true;
 cornfield.instanceColor.needsUpdate = true;
 
 scene.add(cornfield);
+
+// Enable frustum culling for pop-in (objects beyond camera frustum aren't rendered)
+cornfield.frustumCulled = true;
 
 console.log(`  Cornfield: ${placedCount} stalks placed`);
 
@@ -844,7 +929,7 @@ function createAnomaly(geometry, color, x, z, name) {
 
 // 1. Sphere — floating orb, pale blue glow
 createAnomaly(
-  new THREE.SphereGeometry(0.5, 16, 16),
+  new THREE.SphereGeometry(0.5, 8, 8),   // Low-poly: 8x8 instead of 16x16
   0x4488ff,
   FIELD_HALF * 0.6,   // ~27 units out
   FIELD_HALF * 0.5,   // ~22 units out
@@ -853,7 +938,7 @@ createAnomaly(
 
 // 2. Torus Knot — intricate twisted ring, sickly green
 createAnomaly(
-  new THREE.TorusKnotGeometry(0.4, 0.1, 64, 8, 2, 3),
+  new THREE.TorusKnotGeometry(0.4, 0.1, 32, 6, 2, 3),  // Low-poly: 32x6 instead of 64x8
   0x44ff44,
   -FIELD_HALF * 0.55,
   FIELD_HALF * 0.65,
@@ -1200,6 +1285,33 @@ function triggerGameOver(reason) {
 camera.position.set(0, PLAYER_HEIGHT, 0);
 
 animate();
+
+// ============================================================================
+// PSX: Apply retro styling to all scene materials
+// ============================================================================
+// Walk the scene after everything is created and force flatShading + NearestFilter
+// on all materials. This catches any material defined inline.
+
+scene.traverse((node) => {
+  if (node.isMesh && node.material) {
+    // Handle single material or material array
+    const materials = Array.isArray(node.material) ? node.material : [node.material];
+    for (const mat of materials) {
+      if (mat.isMeshStandardMaterial || mat.isMeshPhongMaterial || mat.isMeshLambertMaterial) {
+        mat.flatShading = true;
+        mat.needsUpdate = true;
+      }
+      // NearestFilter on any texture map
+      if (mat.map) {
+        mat.map.magFilter = THREE.NearestFilter;
+        mat.map.minFilter = THREE.NearestFilter;
+        mat.map.needsUpdate = true;
+      }
+    }
+  }
+});
+
+console.log('[PSX] Flat shading + NearestFilter applied to all scene materials');
 
 // ============================================================================
 // G006: GAME LOOP — HUD, states, restart
