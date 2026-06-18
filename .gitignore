@@ -1,0 +1,18 @@
+# Node / dependencies (if any in future)
+node_modules/
+package-lock.json
+
+# macOS
+.DS_Store
+*.swp
+*.swo
+
+# Editor
+.idea/
+.vscode/
+
+# Server logs
+*.log
+
+# Temp
+*.tmp

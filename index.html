@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signs: Harvest Night — 3D Horror FPS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- HUD overlay -->
+  <div id="hud">
+    <div id="crosshair">+</div>
+    <div id="anomaly-counter">Anomalies: <span id="anomaly-count">0</span>/5</div>
+    <div id="stare-meter-container">
+      <div id="stare-label">STARE</div>
+      <div id="stare-meter"></div>
+    </div>
+  </div>
+
+  <!-- Game Over / Win screens -->
+  <div id="game-over-screen" class="overlay-screen hidden">
+    <div class="overlay-content">
+      <h1 id="game-over-title">GAME OVER</h1>
+      <p id="game-over-reason"></p>
+      <button id="restart-btn">Play Again</button>
+    </div>
+  </div>
+
+  <div id="win-screen" class="overlay-screen hidden">
+    <div class="overlay-content">
+      <h1>ANOMALIES CONTAINED</h1>
+      <p>All 5 anomalies collected. The farm is safe... for now.</p>
+      <button id="restart-btn-win">Play Again</button>
+    </div>
+  </div>
+
+  <!-- Instructions overlay (shown before pointer lock) -->
+  <div id="instructions">
+    <h2>SIGNS: HARVEST NIGHT</h2>
+    <p>Click to start</p>
+    <p>WASD — Move &nbsp;|&nbsp; Mouse — Look</p>
+    <p>Find 5 anomalies in the cornfield</p>
+    <p>Avoid the stalker. Don't stare too long.</p>
+  </div>
+
+  <!-- Three.js import map -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
