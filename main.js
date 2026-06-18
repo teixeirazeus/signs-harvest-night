@@ -824,8 +824,10 @@ console.log('  Structures: farmhouse + barn + 8 debris items + 16 fence posts');
 // ============================================================================
 // EASTER EGG: Low-poly cow (PSX style) — click to hear moo
 // ============================================================================
-// A Holstein cow built from geometric primitives. Placed near the barn.
+// A Holstein cow built from geometric primitives. Hidden in the cornfield.
 // Click detection via raycaster. Moo sound loaded via Howler.js.
+//
+// Proportions: body length ~1.5u, height to back ~1.2u, total height ~1.5u.
 
 const cow = new THREE.Group();
 cow.name = 'cow';
@@ -835,78 +837,78 @@ const cowWhite = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.
 const cowBlack = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8, flatShading: true });
 const cowPink  = new THREE.MeshStandardMaterial({ color: 0xcc9988, roughness: 0.9, flatShading: true });
 
-// Body — wide box
-const cowBody = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.7, 0.9), cowWhite);
-cowBody.position.y = 0.85;
+// Body — main torso, taller than before (1.0u vs 0.7u) to fix squished look
+const cowBody = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.0, 0.9), cowWhite);
+cowBody.position.y = 0.7;
 cowBody.castShadow = true;
 cow.add(cowBody);
 
 // Black patch on body (big spot)
-const patch1 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.2, 0.5), cowBlack);
-patch1.position.set(0.25, 1.1, 0);
+const patch1 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.3, 0.5), cowBlack);
+patch1.position.set(0.25, 1.0, 0);
 cow.add(patch1);
 
-const patch2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.35), cowBlack);
-patch2.position.set(-0.35, 1.1, -0.2);
+const patch2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.25, 0.35), cowBlack);
+patch2.position.set(-0.35, 1.05, -0.2);
 cow.add(patch2);
 
-// Head — smaller box at front
-const cowHead = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.45, 0.6), cowWhite);
-cowHead.position.set(0, 1.15, 0.7);
+// Head — at front of body, same height as top of body
+const cowHead = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.6), cowWhite);
+cowHead.position.set(0, 1.0, 0.8);
 cowHead.castShadow = true;
 cow.add(cowHead);
 
-// Snout — pink box
-const snout = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, 0.15), cowPink);
-snout.position.set(0, 1.05, 0.95);
+// Snout — pink square at front of head
+const snout = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.15), cowPink);
+snout.position.set(0, 0.9, 1.1);
 cow.add(snout);
 
-// Eyes — tiny black spheres
+// Eyes — tiny black spheres on head sides
 const cowEyeGeom = new THREE.SphereGeometry(0.05, 4, 4);
 const eyeL = new THREE.Mesh(cowEyeGeom, cowBlack);
-eyeL.position.set(-0.14, 1.28, 0.9);
+eyeL.position.set(-0.15, 1.15, 1.0);
 cow.add(eyeL);
 const eyeR = new THREE.Mesh(cowEyeGeom, cowBlack);
-eyeR.position.set(0.14, 1.28, 0.9);
+eyeR.position.set(0.15, 1.15, 1.0);
 cow.add(eyeR);
 
-// Legs — 4 thin cylinders
-const cowLegGeom = new THREE.CylinderGeometry(0.09, 0.09, 0.7, 6);
+// Legs — 4 thin cylinders, shorter than before (0.6u vs 0.7u), better proportion
+const cowLegGeom = new THREE.CylinderGeometry(0.1, 0.1, 0.6, 6);
 const legPositions = [
-  [-0.5, 0.5, -0.25], [0.5, 0.5, -0.25],
-  [-0.5, 0.5, 0.25],  [0.5, 0.5, 0.25],
+  [-0.5, 0.45, -0.25], [0.5, 0.45, -0.25],
+  [-0.5, 0.45, 0.25],  [0.5, 0.45, 0.25],
 ];
 for (const [lx, ly, lz] of legPositions) {
   const leg = new THREE.Mesh(cowLegGeom, cowWhite);
   leg.position.set(lx, ly, lz);
   leg.castShadow = true;
   cow.add(leg);
-  // Small black hoof
-  const hoof = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.06, 0.11), cowBlack);
-  hoof.position.set(lx, 0.18, lz);
+  // Small black hoof at bottom of leg
+  const hoof = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.12), cowBlack);
+  hoof.position.set(lx, 0.12, lz);
   cow.add(hoof);
 }
 
-// Horns — two tiny cones
+// Horns — two tiny cones on top of head
 const cowHornGeom = new THREE.ConeGeometry(0.04, 0.2, 4);
 const hornL = new THREE.Mesh(cowHornGeom, cowBlack);
-hornL.position.set(-0.15, 1.4, 0.65);
+hornL.position.set(-0.15, 1.3, 0.75);
 hornL.rotation.z = 0.5;
 cow.add(hornL);
 const hornR = new THREE.Mesh(cowHornGeom, cowBlack);
-hornR.position.set(0.15, 1.4, 0.65);
+hornR.position.set(0.15, 1.3, 0.75);
 hornR.rotation.z = -0.5;
 cow.add(hornR);
 
-// Udder — small pink sphere
+// Udder — small pink sphere between hind legs
 const udder = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), cowPink);
-udder.position.set(0, 0.55, -0.3);
+udder.position.set(0, 0.45, -0.35);
 cow.add(udder);
 
-// Tail
+// Tail — thin cylinder at rear
 const tailStick = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 4), cowBlack);
-tailStick.position.set(0, 1.0, -0.55);
-tailStick.rotation.x = -0.7;
+tailStick.position.set(0, 0.7, -0.55);
+tailStick.rotation.x = -0.5;
 cow.add(tailStick);
 
 // Place cow in the cornfield — discovery spot far from the farmhouse
