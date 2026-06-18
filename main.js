@@ -943,130 +943,108 @@ const STARE_DECAY_RATE = 1.5;         // How fast stare decays when looking away
 let stareTime = 0.0;
 
 // ============================================================================
-// G005 VISUAL REWORK: Classic Grey Alien (green variant)
+// G005 VISUAL REWORK: Classic Grey Alien (green variant) — CORRECTED PROPORTIONS
 // ============================================================================
-// Classic Grey alien silhouette, but green for visibility through PSX fog.
-// Iconic features: oversized bulbous head, huge almond eyes, thin body,
-// spindly limbs. All low-poly (PSX-style flat shaded primitives).
+// Proportions based on classic Grey alien depictions (Communion cover,
+// Roswell descriptions, pop culture): head ~28% of total height, thin body,
+// large almond eyes. Total height: ~4.0 units.
 //
-// Height: ~4.5 units total (head 1.8u + neck 0.2u + body 1.2u + legs 1.3u)
+// Reference: en.wikipedia.org/wiki/Grey_alien
+// "disproportionately large heads" but NOT 50%+ — typically 25-30% of height.
+// Eyes are "very large, opaque, black" — about 30% of face height.
+// Body "small chest, lacking muscular definition", legs "shorter".
 
 const stalkerGroup = new THREE.Group();
 stalkerGroup.name = 'stalker';
 
 // --- Material definitions ---
-// Green skin — visible through fog, eerie under flashlight
 const skinGreen = new THREE.MeshStandardMaterial({
-  color: 0x3d7a2e,
-  roughness: 0.7,
-  metalness: 0.05,
-  flatShading: true,
+  color: 0x3d7a2e, roughness: 0.7, metalness: 0.05, flatShading: true,
 });
-// Darker green for limbs
 const limbGreen = new THREE.MeshStandardMaterial({
-  color: 0x2a5a1e,
-  roughness: 0.75,
-  metalness: 0.05,
-  flatShading: true,
+  color: 0x2a5a1e, roughness: 0.75, metalness: 0.05, flatShading: true,
 });
-// Black for eyes — deep void
 const eyeBlack = new THREE.MeshStandardMaterial({
-  color: 0x020202,
-  roughness: 0.1,
-  metalness: 0.0,
-  flatShading: true,
+  color: 0x020202, roughness: 0.1, metalness: 0.0, flatShading: true,
 });
 
-// --- HEAD: oversized bulbous ellipsoid ---
-// The most iconic Grey feature — a massive, elongated head.
-// Scaled sphere: slightly squished on X, stretched on Y, narrow on Z.
-const headGeom = new THREE.SphereGeometry(1, 10, 8); // Low-poly: 10x8 segments
+// --- HEAD: bulbous ellipsoid, ~1.15 units tall (~28% of 4.0 total) ---
+// Radius 0.5, Y scale 1.15 → diameter 1.0 × 1.15 = 1.15u head height.
+// Slightly squished on X, narrow front-to-back (teardrop shape).
+const headGeom = new THREE.SphereGeometry(0.5, 10, 8);
 const headMesh = new THREE.Mesh(headGeom, skinGreen);
-headMesh.scale.set(0.85, 1.3, 0.75);  // Elongated upward, narrow front-to-back
-headMesh.position.y = 3.6;              // Top of body
+headMesh.scale.set(0.85, 1.15, 0.7);
+headMesh.position.y = 3.25;
 headMesh.castShadow = true;
 headMesh.name = 'stalkerHead';
 stalkerGroup.add(headMesh);
 
-// --- EYES: huge almond-shaped black ovals ---
-// Large, slightly slanted — the classic Grey stare.
-// Using scaled spheres for almond shape.
-const eyeGeom = new THREE.SphereGeometry(0.35, 8, 6);
+// --- EYES: large almond-shaped black ovals (~30% of face) ---
+// Radius 0.22 × scale 1.4 → ~0.62 wide, ~0.22 tall — classic almond shape.
+const eyeGeom = new THREE.SphereGeometry(0.22, 8, 6);
 const eyeLeftMesh = new THREE.Mesh(eyeGeom, eyeBlack);
-eyeLeftMesh.scale.set(1.6, 1.0, 0.4);   // Wide almond shape
-eyeLeftMesh.position.set(-0.35, 3.85, 0.55);
+eyeLeftMesh.scale.set(1.4, 0.85, 0.3);
+eyeLeftMesh.position.set(-0.25, 3.45, 0.28);
 eyeLeftMesh.name = 'stalkerEyeL';
 stalkerGroup.add(eyeLeftMesh);
 
 const eyeRightMesh = new THREE.Mesh(eyeGeom, eyeBlack);
-eyeRightMesh.scale.set(1.6, 1.0, 0.4);
-eyeRightMesh.position.set(0.35, 3.85, 0.55);
+eyeRightMesh.scale.set(1.4, 0.85, 0.3);
+eyeRightMesh.position.set(0.25, 3.45, 0.28);
 eyeRightMesh.name = 'stalkerEyeR';
 stalkerGroup.add(eyeRightMesh);
 
-// Small green point lights inside the eyes for glow effect
+// Eye glow lights — green, visible through fog
 const eyeGlowL = new THREE.PointLight(0x44aa22, 0.8, 4, 2);
 eyeGlowL.position.copy(eyeLeftMesh.position);
-eyeGlowL.name = 'stalkerEyeGlowL';
 stalkerGroup.add(eyeGlowL);
-
 const eyeGlowR = new THREE.PointLight(0x44aa22, 0.8, 4, 2);
 eyeGlowR.position.copy(eyeRightMesh.position);
-eyeGlowR.name = 'stalkerEyeGlowR';
 stalkerGroup.add(eyeGlowR);
-
-// Main eye glow (brighter, wider range for fog visibility)
 const eyeGlowLight = new THREE.PointLight(0x55cc33, 2.0, 12, 2);
-eyeGlowLight.position.set(0, 3.85, 0.55);
+eyeGlowLight.position.set(0, 3.45, 0.28);
 eyeGlowLight.name = 'stalkerEyeGlow';
 stalkerGroup.add(eyeGlowLight);
 
-// --- NECK: thin connector ---
-const neckGeom = new THREE.CylinderGeometry(0.12, 0.18, 0.3, 6);
+// --- NECK: thin connector, ~0.2u ---
+const neckGeom = new THREE.CylinderGeometry(0.08, 0.12, 0.25, 6);
 const neck = new THREE.Mesh(neckGeom, limbGreen);
-neck.position.y = 2.6;
+neck.position.y = 2.55;
 neck.name = 'stalkerNeck';
 stalkerGroup.add(neck);
 
-// --- BODY: thin, short torso ---
-// Greys have proportionally small bodies.
-const bodyGeom = new THREE.CylinderGeometry(0.3, 0.35, 1.4, 8);
+// --- BODY: thin tapered torso, ~1.05u (25% of height) ---
+const bodyGeom = new THREE.CylinderGeometry(0.22, 0.28, 1.05, 8);
 const bodyMesh = new THREE.Mesh(bodyGeom, skinGreen);
-bodyMesh.position.y = 1.9;
+bodyMesh.position.y = 1.85;
 bodyMesh.castShadow = true;
 bodyMesh.name = 'stalkerBody';
 stalkerGroup.add(bodyMesh);
 
-// --- ARMS: two thin cylinders, hanging at sides ---
-const armGeom = new THREE.CylinderGeometry(0.08, 0.06, 1.6, 6);
-// Left arm
+// --- ARMS: thin, reach to mid-thigh, ~1.3u each ---
+const armGeom = new THREE.CylinderGeometry(0.06, 0.05, 1.3, 6);
 const armL = new THREE.Mesh(armGeom, limbGreen);
-armL.position.set(-0.4, 1.8, 0);
-armL.rotation.z = 0.3; // Slightly outward
+armL.position.set(-0.36, 1.75, 0);
+armL.rotation.z = 0.25;
 armL.castShadow = true;
 armL.name = 'stalkerArmL';
 stalkerGroup.add(armL);
-
-// Right arm
 const armR = new THREE.Mesh(armGeom, limbGreen);
-armR.position.set(0.4, 1.8, 0);
-armR.rotation.z = -0.3;
+armR.position.set(0.36, 1.75, 0);
+armR.rotation.z = -0.25;
 armR.castShadow = true;
 armR.name = 'stalkerArmR';
 stalkerGroup.add(armR);
 
-// --- LEGS: two thin cylinders ---
-const legGeom = new THREE.CylinderGeometry(0.1, 0.08, 1.3, 6);
-// Left leg
+// --- LEGS: short, thin, ~1.1u each ---
+const legGeom = new THREE.CylinderGeometry(0.08, 0.06, 1.1, 6);
 const legL = new THREE.Mesh(legGeom, limbGreen);
-legL.position.set(-0.18, 0.55, 0);
+legL.position.set(-0.16, 0.5, 0);
 legL.castShadow = true;
 legL.name = 'stalkerLegL';
 stalkerGroup.add(legL);
-
-// Right leg
 const legR = new THREE.Mesh(legGeom, limbGreen);
-legR.position.set(0.18, 0.55, 0);
+legR.position.set(0.16, 0.5, 0);
 legR.castShadow = true;
 legR.name = 'stalkerLegR';
 stalkerGroup.add(legR);
