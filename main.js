@@ -247,12 +247,6 @@ function animate() {
     // --- G005: STALKER AI — chase, stare, and visibility ---
     updateStalker(delta, forwardDir);
 
-    // --- ABDUCTION cinematic (if active) ---
-    updateAbduction(delta);
-
-    // If abducting, skip other game logic
-    if (gameState === 'ABDUCTING') { renderer.render(scene, camera); return; }
-
     // --- VISUAL: Update dust particles (drift + recycle) ---
     updateParticles(delta);
 
@@ -287,6 +281,10 @@ function animate() {
     const staticLevel = stareTime / STARE_TIME_MAX;
     setStaticIntensity(staticLevel);
   }
+
+  // --- ABDUCTION cinematic (outside isLocked check — must run even after unlock) ---
+  updateAbduction(delta);
+  if (gameState === 'ABDUCTING') { renderer.render(scene, camera); return; }
 
   // --- RENDER ---
   renderer.render(scene, camera);
@@ -1423,7 +1421,6 @@ function triggerGameOver(reason) {
   abduction.reason = reason;
   abduction.startY = camera.position.y;
   gameState = 'ABDUCTING';
-  controls.unlock(); // Player can't move during abduction
   // Show UFO above the player
   ufo.position.set(camera.position.x, 30, camera.position.z);
   ufo.visible = true;
@@ -1489,6 +1486,8 @@ function updateAbduction(delta) {
 function finishAbduction() {
   abduction.active = false;
   gameState = 'GAME_OVER';
+  // Release pointer so player can click restart buttons
+  controls.unlock();
   ufo.visible = false;
   beamLight.intensity = 0;
   beam.material.opacity = 0.12;
