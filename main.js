@@ -537,133 +537,127 @@ console.log(`  Sky: moon + ${STAR_COUNT} stars`);
 // player spawn and scattered gaps for anomalies.
 //
 // TUNING PARAMETERS (adjust when replacing with models):
-//   - STALK_COUNT: total number of stalks
-//   - FIELD_HALF: half-width of the square field
-//   - SPACING: distance between stalk centers
-//   - CLEARING_RADIUS: open area around player spawn
-//   - STALK_HEIGHT: base stalk height (scaled per instance)
-//   - STALK_RADIUS_BASE / STALK_RADIUS_TOP: cylinder taper
+//   - SPRITE_SHEET_COLS / SPRITE_SHEET_ROWS: grid in the spritesheet image
+//   - SPRITE_SIZE: each stalk is 24x24px in the sheet, rendered at ~4u tall
 
-const STALK_COUNT = 3600;
-const FIELD_HALF = 45;          // Field extends from -45 to +45 on X and Z
-const SPACING = 1.5;            // Grid spacing between stalks
-const CLEARING_RADIUS = 5;      // Open area around origin (player spawn)
-const STALK_HEIGHT = 4.0;       // Base stalk height in units
-const STALK_RADIUS_BASE = 0.06; // Bottom radius (slightly thicker)
-const STALK_RADIUS_TOP = 0.04;  // Top radius (tapered)
+const FIELD_HALF = 45;
+const SPACING = 1.5;
+const CLEARING_RADIUS = 5;
+const SPRITE_SIZE = 24;          // Pixels per stalk in spritesheet
+const SPRITE_WORLD_SIZE = 4.5;   // Sprite height in world units
+const SPRITE_VARIANTS = 30;      // How many different textures to extract
+const SHEET_COLS = 100;          // Spritesheet columns (2400/24)
+const SHEET_ROWS = 74;           // Spritesheet rows (1792/24)
 
-// --- Stalk geometry ---
-// Low-poly cylinder (6 sides) to keep draw calls light.
-// Tapered: base wider than top for a more organic corn-stalk silhouette.
-const stalkGeom = new THREE.CylinderGeometry(
-  STALK_RADIUS_TOP,
-  STALK_RADIUS_BASE,
-  STALK_HEIGHT,
-  6,  // Radial segments
-  1   // Height segments
-);
+// ============================================================================
+// SPRITE CORNFIELD — Points-based from spritesheet slices
+// ============================================================================
+// Extracts random 24×24px slices from cornfield.png spritesheet,
+// creates a pool of textures, then scatters them as billboarded sprites.
+// PSX-authentic: flat 2D stalks that always face the camera.
 
-// --- Stalk material ---
-// Dark green-brown base. Per-instance color variation is applied via instanceColor
-// (green for healthy stalks, yellow-brown for dry/dying ones) to break the
-// monotony of a single-color field.
-const stalkMat = new THREE.MeshStandardMaterial({
-  color: 0xffffff,      // White base — instanceColor multiplies this
-  roughness: 0.85,
-  metalness: 0.0,
-  flatShading: true,
-});
+const spritesheet = document.getElementById('spritesheet');
+const stalkTextures = [];        // Pool of extracted sprite textures
+const stalkGroups = [];          // One THREE.Points per texture variant
 
-// --- InstancedMesh ---
-const cornfield = new THREE.InstancedMesh(stalkGeom, stalkMat, STALK_COUNT);
-cornfield.castShadow = true;
-cornfield.receiveShadow = true;
-cornfield.name = 'cornfield';
-
-// Enable per-instance color variation
-cornfield.instanceColor = new THREE.InstancedBufferAttribute(
-  new Float32Array(STALK_COUNT * 3), 3
-);
-
-// --- Pseudo-random number generator (seeded for reproducibility) ---
-// Using a simple mulberry32 PRNG so cornfield layout is consistent across reloads.
-function mulberry32(a) {
-  return function() {
-    a |= 0; a = a + 0x6D2B79F5 | 0;
-    var t = Math.imul(a ^ a >>> 15, 1 | a);
-    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-}
-const rng = mulberry32(42); // Seed 42 — change to re-randomize layout
-
-// --- Instance matrix and helpers ---
-const dummy = new THREE.Object3D();
-const stalkPositions = []; // Store positions for anomaly placement (G004)
-let placedCount = 0;
-
-// Generate stalks in a grid pattern.
-// We iterate over a larger grid than needed and skip positions in the clearing
-// and random gaps to create natural-looking density variation.
-const gridCells = Math.ceil((FIELD_HALF * 2) / SPACING);
-
-for (let ix = 0; ix < gridCells && placedCount < STALK_COUNT; ix++) {
-  for (let iz = 0; iz < gridCells && placedCount < STALK_COUNT; iz++) {
-    // Convert grid index to world position (centered)
-    const wx = (ix - gridCells / 2) * SPACING;
-    const wz = (iz - gridCells / 2) * SPACING;
-
-    // Skip if inside the central clearing (player spawn area)
-    const distFromCenter = Math.sqrt(wx * wx + wz * wz);
-    if (distFromCenter < CLEARING_RADIUS) continue;
-
-    // Random thinning: ~15% chance to skip a stalk for organic gaps
-    if (rng() < 0.15) continue;
-
-    // Slight random offset from grid position for organic feel (±0.3 units)
-    const offsetX = (rng() - 0.5) * 0.6;
-    const offsetZ = (rng() - 0.5) * 0.6;
-    const posX = wx + offsetX;
-    const posZ = wz + offsetZ;
-
-    // Random Y rotation (stalk faces random direction — subtle for cylinders)
-    const rotY = rng() * Math.PI * 2;
-
-    // Random scale variation (±15% height, ±20% width)
-    const scaleY = 0.85 + rng() * 0.3;  // 0.85–1.15
-    const scaleXZ = 0.8 + rng() * 0.4;  // 0.8–1.2
-
-    dummy.position.set(posX, (STALK_HEIGHT / 2) * scaleY, posZ);
-    dummy.rotation.set(0, rotY, 0);
-    dummy.scale.set(scaleXZ, scaleY, scaleXZ);
-    dummy.updateMatrix();
-
-    cornfield.setMatrixAt(placedCount, dummy.matrix);
-
-    // Per-instance color: blend between green, yellow-green, and brown
-    // based on a random factor — simulates healthy vs dry corn stalks.
-    const colorRoll = rng();
-    const r = 0.18 + colorRoll * 0.22;  // 0.18–0.40
-    const g = 0.22 + colorRoll * 0.08;  // 0.22–0.30
-    const b = 0.10 + colorRoll * 0.04;  // 0.10–0.14
-    cornfield.instanceColor.setXYZ(placedCount, r, g, b);
-
-    stalkPositions.push({ x: posX, z: posZ });
-    placedCount++;
+function buildSpritesheetTextures() {
+  if (!spritesheet || !spritesheet.complete || spritesheet.naturalWidth === 0) {
+    console.warn('[Sprite] Spritesheet not loaded yet — retrying in 100ms');
+    setTimeout(buildSpritesheetTextures, 100);
+    return;
   }
+  console.log(`[Sprite] Spritesheet loaded: ${spritesheet.naturalWidth}x${spritesheet.naturalHeight}`);
+
+  // Extract random slices from the spritesheet
+  for (let i = 0; i < SPRITE_VARIANTS; i++) {
+    const col = Math.floor(Math.random() * SHEET_COLS);
+    const row = Math.floor(Math.random() * SHEET_ROWS);
+    const sx = col * SPRITE_SIZE;
+    const sy = row * SPRITE_SIZE;
+
+    const texCanvas = document.createElement('canvas');
+    texCanvas.width = SPRITE_SIZE;
+    texCanvas.height = SPRITE_SIZE;
+    const tctx = texCanvas.getContext('2d');
+    tctx.drawImage(spritesheet, sx, sy, SPRITE_SIZE, SPRITE_SIZE, 0, 0, SPRITE_SIZE, SPRITE_SIZE);
+
+    const texture = new THREE.CanvasTexture(texCanvas);
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+    texture.generateMipmaps = false;
+    stalkTextures.push(texture);
+  }
+
+  console.log(`[Sprite] ${stalkTextures.length} stalk textures extracted from spritesheet`);
+  buildCornfield();
 }
 
-// Update the actual instance count if we placed fewer than STALK_COUNT
-cornfield.count = placedCount;
-cornfield.instanceMatrix.needsUpdate = true;
-cornfield.instanceColor.needsUpdate = true;
+function buildCornfield() {
+  // PRNG for reproducible layout
+  function mulberry32(a) {
+    return function() {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  const rng = mulberry32(42);
 
-scene.add(cornfield);
+  const gridCells = Math.ceil((FIELD_HALF * 2) / SPACING);
+  // Bucket positions by texture index
+  const buckets = Array.from({ length: SPRITE_VARIANTS }, () => []);
 
-// Enable frustum culling for pop-in (objects beyond camera frustum aren't rendered)
-cornfield.frustumCulled = true;
+  for (let ix = 0; ix < gridCells; ix++) {
+    for (let iz = 0; iz < gridCells; iz++) {
+      const wx = (ix - gridCells / 2) * SPACING;
+      const wz = (iz - gridCells / 2) * SPACING;
+      if (Math.sqrt(wx * wx + wz * wz) < CLEARING_RADIUS) continue;
+      if (rng() < 0.15) continue;
 
-console.log(`  Cornfield: ${placedCount} stalks placed`);
+      const offsetX = (rng() - 0.5) * 0.6;
+      const offsetZ = (rng() - 0.5) * 0.6;
+      const posX = wx + offsetX;
+      const posZ = wz + offsetZ;
+      // Sprite centered vertically at half height
+      const posY = SPRITE_WORLD_SIZE / 2;
+
+      const bucket = Math.floor(Math.random() * SPRITE_VARIANTS);
+      buckets[bucket].push(posX, posY, posZ);
+    }
+  }
+
+  // Create one Points object per texture variant
+  let totalStalks = 0;
+  for (let i = 0; i < SPRITE_VARIANTS; i++) {
+    const positions = buckets[i];
+    if (positions.length === 0) continue;
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+
+    const mat = new THREE.PointsMaterial({
+      size: SPRITE_WORLD_SIZE,
+      map: stalkTextures[i],
+      blending: THREE.NormalBlending,
+      depthWrite: true,
+      transparent: true,
+      sizeAttenuation: true,
+    });
+
+    const points = new THREE.Points(geom, mat);
+    points.name = 'cornfield_sprite_' + i;
+    points.frustumCulled = true;
+    scene.add(points);
+    stalkGroups.push(points);
+    totalStalks += positions.length / 3;
+  }
+
+  console.log(`  Cornfield: ${totalStalks} sprite stalks from ${stalkGroups.length} texture variants`);
+}
+
+// Start loading (retries until spritesheet is available)
+buildSpritesheetTextures();
 
 // ============================================================================
 // VISUAL ENHANCEMENT: Farmhouse + ground details
