@@ -911,12 +911,12 @@ tailStick.position.set(0, 1.0, -0.55);
 tailStick.rotation.x = -0.7;
 cow.add(tailStick);
 
-// Place cow by the barn
-cow.position.set(10, 0.02, -2);
-cow.rotation.y = -0.3;
+// Place cow in the cornfield — discovery spot far from the farmhouse
+cow.position.set(20, 0.02, -18);
+cow.rotation.y = -1.2;
 scene.add(cow);
 
-console.log('  🐄 Cow placed near barn (click to moo)');
+console.log('  🐄 Cow placed in cornfield at (20, -18) — go find her!');
 
 // ============================================================================
 // G004: ANOMALIES — 5 collectible objects hidden in the cornfield
