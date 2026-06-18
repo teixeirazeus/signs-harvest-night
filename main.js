@@ -824,6 +824,101 @@ for (let i = 0; i < fencePosts; i++) {
 console.log('  Structures: farmhouse + barn + 8 debris items + 16 fence posts');
 
 // ============================================================================
+// EASTER EGG: Low-poly cow (PSX style) — click to hear moo
+// ============================================================================
+// A Holstein cow built from geometric primitives. Placed near the barn.
+// Click detection via raycaster. Moo sound loaded via Howler.js.
+
+const cow = new THREE.Group();
+cow.name = 'cow';
+
+// Materials
+const cowWhite = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.8, flatShading: true });
+const cowBlack = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8, flatShading: true });
+const cowPink  = new THREE.MeshStandardMaterial({ color: 0xcc9988, roughness: 0.9, flatShading: true });
+
+// Body — wide box
+const cowBody = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.7, 0.9), cowWhite);
+cowBody.position.y = 0.85;
+cowBody.castShadow = true;
+cow.add(cowBody);
+
+// Black patch on body (big spot)
+const patch1 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.2, 0.5), cowBlack);
+patch1.position.set(0.25, 1.1, 0);
+cow.add(patch1);
+
+const patch2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.35), cowBlack);
+patch2.position.set(-0.35, 1.1, -0.2);
+cow.add(patch2);
+
+// Head — smaller box at front
+const cowHead = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.45, 0.6), cowWhite);
+cowHead.position.set(0, 1.15, 0.7);
+cowHead.castShadow = true;
+cow.add(cowHead);
+
+// Snout — pink box
+const snout = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, 0.15), cowPink);
+snout.position.set(0, 1.05, 0.95);
+cow.add(snout);
+
+// Eyes — tiny black spheres
+const cowEyeGeom = new THREE.SphereGeometry(0.05, 4, 4);
+const eyeL = new THREE.Mesh(cowEyeGeom, cowBlack);
+eyeL.position.set(-0.14, 1.28, 0.9);
+cow.add(eyeL);
+const eyeR = new THREE.Mesh(cowEyeGeom, cowBlack);
+eyeR.position.set(0.14, 1.28, 0.9);
+cow.add(eyeR);
+
+// Legs — 4 thin cylinders
+const cowLegGeom = new THREE.CylinderGeometry(0.09, 0.09, 0.7, 6);
+const legPositions = [
+  [-0.5, 0.5, -0.25], [0.5, 0.5, -0.25],
+  [-0.5, 0.5, 0.25],  [0.5, 0.5, 0.25],
+];
+for (const [lx, ly, lz] of legPositions) {
+  const leg = new THREE.Mesh(cowLegGeom, cowWhite);
+  leg.position.set(lx, ly, lz);
+  leg.castShadow = true;
+  cow.add(leg);
+  // Small black hoof
+  const hoof = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.06, 0.11), cowBlack);
+  hoof.position.set(lx, 0.18, lz);
+  cow.add(hoof);
+}
+
+// Horns — two tiny cones
+const cowHornGeom = new THREE.ConeGeometry(0.04, 0.2, 4);
+const hornL = new THREE.Mesh(cowHornGeom, cowBlack);
+hornL.position.set(-0.15, 1.4, 0.65);
+hornL.rotation.z = 0.5;
+cow.add(hornL);
+const hornR = new THREE.Mesh(cowHornGeom, cowBlack);
+hornR.position.set(0.15, 1.4, 0.65);
+hornR.rotation.z = -0.5;
+cow.add(hornR);
+
+// Udder — small pink sphere
+const udder = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), cowPink);
+udder.position.set(0, 0.55, -0.3);
+cow.add(udder);
+
+// Tail
+const tailStick = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 4), cowBlack);
+tailStick.position.set(0, 1.0, -0.55);
+tailStick.rotation.x = -0.7;
+cow.add(tailStick);
+
+// Place cow by the barn
+cow.position.set(10, 0.02, -2);
+cow.rotation.y = -0.3;
+scene.add(cow);
+
+console.log('  🐄 Cow placed near barn (click to moo)');
+
+// ============================================================================
 // G004: ANOMALIES — 5 collectible objects hidden in the cornfield
 // ============================================================================
 // Five anomalous objects with distinct geometric shapes and glowing/emissive
@@ -1485,6 +1580,12 @@ function initAudio() {
     autoplay: false,
   });
 
+  // Cow moo — single short clip, triggered on click
+  audioState.moo = new Howl({
+    src: ['sounds/cow_moo.mp3'],
+    volume: 0.8,
+  });
+
   // Footstep sounds — pick randomly from available grass steps
   const stepNames = [];
   for (let i = 0; i <= 9; i++) {
@@ -1523,7 +1624,37 @@ function setStaticIntensity(level) {
   }
 }
 
-console.log('[Audio] System ready — ambient, footsteps, TV static');
+// --- Play cow moo sound ---
+function playMoo() {
+  if (!audioReady || !audioState.moo) return;
+  // Slight pitch variation for variety
+  const rate = 0.85 + Math.random() * 0.3;
+  audioState.moo.rate(rate).play();
+  console.log('🐄 MOO!');
+}
+
+// --- Raycaster for cow click detection ---
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+renderer.domElement.addEventListener('mousedown', (event) => {
+  if (!controls.isLocked || gameState !== 'PLAYING') return; // Only when actively playing
+
+  // Convert click to normalized device coordinates
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+
+  // Check intersection with cow and its children
+  const intersects = raycaster.intersectObjects(cow.children, true);
+  if (intersects.length > 0) {
+    playMoo();
+  }
+});
+
+console.log('[Audio] System ready — ambient, footsteps, TV static, MOO');
 
 // ============================================================================
 // ABDUCTION: UFO + light beam for Game Over cinematic
