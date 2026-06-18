@@ -1,58 +1,58 @@
-# Renderização Estilo PlayStation 1 (PSX) em Three.js
+# PlayStation 1 (PSX) Style Rendering in Three.js
 
-> Guia técnico completo para implementar gráficos PSX no Three.js
-> Destinado ao branch `psx` do projeto *Signs: Harvest Night*
+> Complete technical guide to implementing PSX graphics in Three.js
+> Intended for the `psx` branch of the *Signs: Harvest Night* project
 
 ---
 
-## Índice
+## Table of Contents
 
-1. [Visão Geral](#1-visão-geral)
-2. [Características Visuais do PS1](#2-características-visuais-do-ps1)
-3. [Técnicas de Implementação](#3-técnicas-de-implementação)
-4. [Pipeline Completo (Shader Customizado)](#4-pipeline-completo-shader-customizado)
-5. [Tabela: Técnica vs. Abordagem](#5-tabela-técnica-vs-abordagem)
+1. [Overview](#1-overview)
+2. [PS1 Visual Characteristics](#2-ps1-visual-characteristics)
+3. [Implementation Techniques](#3-implementation-techniques)
+4. [Complete Pipeline (Custom Shader)](#4-complete-pipeline-custom-shader)
+5. [Table: Technique vs. Approach](#5-table-technique-vs-approach)
 6. [Performance Considerations](#6-performance-considerations)
-7. [Links e Recursos](#7-links-e-recursos)
-8. [Referências](#8-referências)
+7. [Links and Resources](#7-links-and-resources)
+8. [References](#8-references)
 
 ---
 
-## 1. Visão Geral
+## 1. Overview
 
-O PlayStation 1 usava hardware com limitações severas que hoje definem uma estética reconhecível:
+The PlayStation 1 used hardware with severe limitations that today define a recognizable aesthetic:
 
-- **Sem floating-point** → geometria em inteiros de 16-bit → vértices "pulam" (snap/jitter)
-- **Sem perspective-correct texture mapping** → texturas "dançam" (affine warp)
-- **15-bit color (5:5:5 RGB)** → 32.768 cores, bandas de cor visíveis
-- **Frame buffer de 1 MB** → resolução baixa (256x224 ou 320x240), sem anti-aliasing
-- **Sem zbuffer** → ordem de renderização por polígono (painter's algorithm)
-- **GTE (Geometry Transformation Engine)** → operações matriciais fixas, sem lighting por pixel
+- **No floating-point** → 16-bit integer geometry → vertices "pop" (snap/jitter)
+- **No perspective-correct texture mapping** → textures "dance" (affine warp)
+- **15-bit color (5:5:5 RGB)** → 32,768 colors, visible color bands
+- **1 MB frame buffer** → low resolution (256x224 or 320x240), no anti-aliasing
+- **No zbuffer** → polygon rendering order (painter's algorithm)
+- **GTE (Geometry Transformation Engine)** → fixed matrix operations, no per-pixel lighting
 
 ---
 
-## 2. Características Visuais do PS1
+## 2. PS1 Visual Characteristics
 
-| Característica | Causa Técnica | Efeito Visual |
+| Characteristic | Technical Cause | Visual Effect |
 |---|---|---|
-| **Vertex Snapping** | Fixed-point math (3.12 signed) | Vértices tremem/saltam em grid |
-| **Affine Texture Mapping** | Sem perspectiva correction | Texturas沿 diagonais扭曲 |
-| **Dithering** | Frame buffer de 15-bit → padrão Bayer | Ruído organizado em áreas de gradiente |
-| **Color Banding** | 5 bits por canal (0-31) | Degradês visíveis, transições abruptas |
-| **Low Poly** | Limite de ~2400 polígonos por frame | Modelos simplificados, faces grandes |
-| **Sub-Pixel Wobble** | Ausência de sub-pixel precision na GTE | Objetos "vibram" em relação à câmera |
-| **Pop-In** | Distância de render curta + visibilidade por setor | Objetos aparecem subitamente |
-| **Fog** | Distance fog forçado pelo hardware | Nevoeiro denso que oculta o pop-in |
-| **Nearest Neighbor** | Sem bilinear filtering | Texturas pixeladas, "serrilhadas" |
-| **No Anti-Aliasing** | Frame buffer direto, sem multisampling | Aliasing evidente em bordas |
+| **Vertex Snapping** | Fixed-point math (3.12 signed) | Vertices shake/snap in a grid |
+| **Affine Texture Mapping** | No perspective correction | Texturas沿 diagonais扭曲 |
+| **Dithering** | 15-bit frame buffer → Bayer pattern | Organized noise in gradient areas |
+| **Color Banding** | 5 bits per channel (0-31) | Visible gradients, abrupt transitions |
+| **Low Poly** | Limit of ~2400 polygons per frame | Simplified models, large faces |
+| **Sub-Pixel Wobble** | Lack of sub-pixel precision in the GTE | Objects "vibrate" relative to the camera |
+| **Pop-In** | Short render distance + sector-based visibility | Objects appear suddenly |
+| **Fog** | Distance fog forced by hardware | Dense fog that hides pop-in |
+| **Nearest Neighbor** | No bilinear filtering | Pixelated, "jagged" textures |
+| **No Anti-Aliasing** | Direct frame buffer, no multisampling | Evident aliasing on edges |
 
 ---
 
-## 3. Técnicas de Implementação
+## 3. Implementation Techniques
 
 ### 3.1 Nearest-Neighbor Filtering
 
-**Abordagem: Configuração padrão do Three.js** — não precisa de shader.
+**Approach: Default Three.js configuration** — no shader needed.
 
 ```javascript
 import * as THREE from 'three';
@@ -62,7 +62,7 @@ texture.magFilter = THREE.NearestFilter;
 texture.minFilter = THREE.NearestFilter;
 texture.generateMipmaps = false;
 
-// No carregador GLTF:
+// In GLTF loader:
 const loader = new THREE.GLTFLoader();
 loader.load('model.glb', (gltf) => {
   gltf.scene.traverse((node) => {
@@ -76,22 +76,22 @@ loader.load('model.glb', (gltf) => {
 });
 ```
 
-> **Leve.** Custo zero de performance, apenas muda o sampler do GPU.
+> **Light.** Zero performance cost, just changes the GPU sampler.
 
-### 3.2 Low-Poly / Baixa Contagem de Polígonos
+### 3.2 Low-Poly / Low Polygon Count
 
-**Abordagem: Configuração padrão do Three.js**
+**Approach: Default Three.js configuration**
 
 ```javascript
 const sphere = new THREE.SphereGeometry(1, 8, 8);   // 8x8 = 80 triângulos
 const cylinder = new THREE.CylinderGeometry(1, 1, 2, 6); // Prisma hexagonal
 ```
 
-> **Leve.** Menos polígonos = mais performance.
+> **Light.** Fewer polygons = more performance.
 
-### 3.3 Color Depth / Quantização de Cores
+### 3.3 Color Depth / Color Quantization
 
-**Abordagem: Shader de pós-processamento (GLSL)**
+**Approach: Post-processing shader (GLSL)**
 
 ```javascript
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
@@ -115,11 +115,11 @@ const quantizePass = new ShaderPass(ColorQuantizeShader);
 composer.addPass(quantizePass);
 ```
 
-> **Médio.** Pass simples de tela cheia. PS1 autêntico usa 5-bit (31 steps). Para terror, 16-24 steps.
+> **Medium.** Simple full-screen pass. Authentic PS1 uses 5-bit (31 steps). For horror, 16-24 steps.
 
 ### 3.4 Dithering (Bayer Matrix)
 
-**Abordagem: Shader de pós-processamento**
+**Approach: Post-processing shader**
 
 ```javascript
 const DitherShader = {
@@ -148,11 +148,11 @@ const DitherShader = {
 };
 ```
 
-> **Médio.** Combine sempre com quantização. Essencial para o visual PSX.
+> **Medium.** Always combine with quantization. Essential for the PSX look.
 
 ### 3.5 Vertex Snapping / Jitter
 
-**Abordagem: Shader de vértice customizado** — técnica mais importante.
+**Approach: Custom vertex shader** — the most important technique.
 
 ```javascript
 const vertexSnapShader = {
@@ -187,7 +187,7 @@ const vertexSnapShader = {
 };
 ```
 
-**Variação Camera-Relative Snap (mais autêntico):**
+**Camera-Relative Snap Variation (more authentic):**
 ```glsl
 vec4 viewPos = viewMatrix * modelMatrix * vec4(position, 1.0);
 float snap = 0.5;
@@ -196,11 +196,11 @@ viewPos.xy = snappedXY;
 gl_Position = projectionMatrix * viewPos;
 ```
 
-> **Pesado (relativo).** Custa math por vértice. Para <10k vértices é imperceptível.
+> **Heavy (relative).** Costs math per vertex. For <10k vertices it's imperceptible.
 
 ### 3.6 Affine Texture Mapping
 
-**Abordagem: Shader de fragmento customizado**
+**Approach: Custom fragment shader**
 
 ```javascript
 const AffineTextureShader = {
@@ -226,7 +226,7 @@ const AffineTextureShader = {
 };
 ```
 
-**Variação autêntica (affine dividido por W):**
+**Authentic variation (affine divided by W):**
 ```glsl
 // Vertex:
 varying vec2 vAffineUV; varying float vW;
@@ -242,11 +242,11 @@ void main() {
 }
 ```
 
-> **Médio.** Warp exagerado = cara do PS1. Combine com vertex snapping.
+> **Medium.** Exaggerated warp = the face of PS1. Combine with vertex snapping.
 
 ### 3.7 Sub-Pixel Wobble
 
-**Abordagem: CPU** — animação da matriz de projeção.
+**Approach: CPU** — projection matrix animation.
 
 ```javascript
 let frame = 0;
@@ -260,11 +260,11 @@ function updateCameraWobble(camera) {
 }
 ```
 
-> **Leve.** Apenas math de CPU 1x por frame.
+> **Light.** Just CPU math 1x per frame.
 
 ### 3.8 Pop-In / Distance Culling
 
-**Abordagem: nativa Three.js + setorização manual**
+**Approach: Native Three.js + manual sectorization**
 
 ```javascript
 const popInDistance = 30;
@@ -272,7 +272,7 @@ function updatePopIn(object, camera) {
   object.visible = object.position.distanceTo(camera.position) < popInDistance;
 }
 
-// Setorização manual (autêntico PS1):
+// Manual sectorization (authentic PS1):
 const sectorSize = 20;
 function updateSectors(camera, sectors) {
   const cx = Math.floor(camera.position.x / sectorSize);
@@ -286,11 +286,11 @@ function updateSectors(camera, sectors) {
 }
 ```
 
-> **Leve.** Apenas operações de distância.
+> **Light.** Just distance operations.
 
-### 3.9 Fog Estilo PS1
+### 3.9 PS1-Style Fog
 
-**Abordagem: Shader customizado com depth texture**
+**Approach: Custom shader with depth texture**
 
 ```javascript
 const PSXFogShader = {
@@ -335,17 +335,17 @@ const PSXFogShader = {
 };
 ```
 
-**Alternativa nativa:**
+**Native alternative:**
 ```javascript
 scene.fog = new THREE.Fog(0x000000, 20, 50); // Linear
-scene.fog = new THREE.FogExp2(0x000000, 0.04); // Exponencial — mais próximo do PS1
+scene.fog = new THREE.FogExp2(0x000000, 0.04); // Exponential — closer to PS1
 ```
 
-> **Médio.** Requer depth texture. Alternativa nativa é leve mas sem dithering.
+> **Medium.** Requires depth texture. Native alternative is light but without dithering.
 
-### 3.10 Gouraud Shading com Bandas
+### 3.10 Gouraud Shading with Banding
 
-**Abordagem: ShaderMaterial com quantização de luz por vértice**
+**Approach: ShaderMaterial with per-vertex light quantization**
 
 ```javascript
 const PSXGouraudShader = {
@@ -373,24 +373,24 @@ const PSXGouraudShader = {
 };
 ```
 
-> **Médio.** Cálculo por vértice.
+> **Medium.** Per-vertex calculation.
 
 ### 3.11 Flat Shading
 
-**Abordagem: Nativo Three.js**
+**Approach: Native Three.js**
 
 ```javascript
 const material = new THREE.MeshStandardMaterial({ flatShading: true });
-// No ShaderMaterial: { flatShading: true }
+// In ShaderMaterial: { flatShading: true }
 ```
 
-> **Leve.** Nativo.
+> **Light.** Native.
 
 ---
 
-## 4. Pipeline Completo (Shader Customizado)
+## 4. Complete Pipeline (Custom Shader)
 
-Shader unificado combinando **vertex snapping + affine texture + quantização + dithering + fog**:
+Unified shader combining **vertex snapping + affine texture + quantization + dithering + fog**:
 
 ```javascript
 // PSX_UnifiedShader.js
@@ -468,7 +468,7 @@ export const PSXShader = {
   `
 };
 
-// Uso:
+// Usage:
 const psxMaterial = new THREE.ShaderMaterial({
   uniforms: THREE.UniformsUtils.clone(PSXShader.uniforms),
   vertexShader: PSXShader.vertexShader,
@@ -479,96 +479,96 @@ const psxMaterial = new THREE.ShaderMaterial({
 
 ---
 
-## 5. Tabela: Técnica vs. Abordagem
+## 5. Table: Technique vs. Approach
 
-| Técnica | Abordagem Three.js | Requer Shader? | Código |
+| Technique | Three.js Approach | Requires Shader? | Code |
 |---|---|---|---|
-| Nearest-Neighbor | texture.magFilter = NearestFilter | Não | 1 linha |
-| Low-Poly | SphereGeometry(1, 8, 8) | Não | 1 linha |
-| Flat Shading | material.flatShading = true | Não | 1 linha |
-| Color Quantization | Pós-processo GLSL | Sim (fragment) | ~20 linhas |
-| Bayer Dithering | Pós-processo GLSL | Sim (fragment) | ~40 linhas |
-| Vertex Snapping | Shader de vértice | Sim (vertex) | ~30 linhas |
-| Affine Texture | Shader de fragmento | Sim (vertex+frag) | ~15 linhas |
-| Sub-Pixel Wobble | CPU (anima câmera) | Opcional | ~10 linhas |
-| Pop-In | object.visible = dist < limit | Não | 1 linha |
-| Fog (básico) | scene.fog = new THREE.Fog() | Não | 1 linha |
-| Fog (PSX estilo) | Pós-processo com depth | Sim | ~50 linhas |
-| Gouraud banding | ShaderMaterial com quantização | Sim (vertex) | ~30 linhas |
-| Baixa resolução | renderer.setSize(320, 240) | Não | 1 linha |
-| Sem AA | antialias: false | Não | 1 linha |
+| Nearest-Neighbor | texture.magFilter = NearestFilter | No | 1 line |
+| Low-Poly | SphereGeometry(1, 8, 8) | No | 1 line |
+| Flat Shading | material.flatShading = true | No | 1 line |
+| Color Quantization | GLSL Post-process | Yes (fragment) | ~20 lines |
+| Bayer Dithering | GLSL Post-process | Yes (fragment) | ~40 lines |
+| Vertex Snapping | Vertex shader | Yes (vertex) | ~30 lines |
+| Affine Texture | Fragment shader | Yes (vertex+frag) | ~15 lines |
+| Sub-Pixel Wobble | CPU (animates camera) | Optional | ~10 lines |
+| Pop-In | object.visible = dist < limit | No | 1 line |
+| Fog (basic) | scene.fog = new THREE.Fog() | No | 1 line |
+| Fog (PSX style) | Post-process with depth | Yes | ~50 lines |
+| Gouraud banding | ShaderMaterial with quantization | Yes (vertex) | ~30 lines |
+| Low resolution | renderer.setSize(320, 240) | No | 1 line |
+| No AA | antialias: false | No | 1 line |
 
 ---
 
 ## 6. Performance Considerations
 
-### Leve (custo zero ou mínimo)
-| Técnica | Impacto |
+### Light (zero or minimal cost)
+| Technique | Impact |
 |---|---|
-| Nearest-neighbor filtering | 🟢 Nenhum |
-| Flat shading | 🟢 Nenhum |
-| Low-poly geometria | 🟢 Positivo (menos vértices) |
-| Pop-in manual | 🟢 Mínimo |
-| Resolução baixa | 🟢 Positivo |
-| Sem anti-aliasing | 🟢 Positivo |
+| Nearest-neighbor filtering | 🟢 None |
+| Flat shading | 🟢 None |
+| Low-poly geometry | 🟢 Positive (fewer vertices) |
+| Manual pop-in | 🟢 Minimal |
+| Low resolution | 🟢 Positive |
+| No anti-aliasing | 🟢 Positive |
 
-### Médio (custo aceitável)
-| Técnica | Impacto |
+### Medium (acceptable cost)
+| Technique | Impact |
 |---|---|
-| Color quantization | 🟡 1 pass simples |
-| Bayer dithering | 🟡 lookup de matriz |
-| Fog com depth | 🟡 Requer depth texture |
-| Vertex snapping | 🟡 Math no vertex shader |
-| Gouraud banding | 🟡 Cálculo por vértice |
+| Color quantization | 🟡 1 simple pass |
+| Bayer dithering | 🟡 Matrix lookup |
+| Fog with depth | 🟡 Requires depth texture |
+| Vertex snapping | 🟡 Math in vertex shader |
+| Gouraud banding | 🟡 Per-vertex calculation |
 
-### Pesado (usar com moderação)
-| Técnica | Impacto |
+### Heavy (use sparingly)
+| Technique | Impact |
 |---|---|
-| Affine texture mapping | 🔴 Divisão extra no fragment |
-| Jitter (hash trigonométrico) | 🔴 sin/cos no vertex shader |
-| Multi-pass pós-processo | 🔴 Largura de banda |
-| Sub-pixel wobble (CPU) | 🔴 Overhead com muitos objetos |
+| Affine texture mapping | 🔴 Extra division in fragment |
+| Jitter (trigonometric hash) | 🔴 sin/cos in vertex shader |
+| Multi-pass post-processing | 🔴 Bandwidth |
+| Sub-pixel wobble (CPU) | 🔴 Overhead with many objects |
 
-### Recomendações para Signs: Harvest Night
+### Recommendations for Signs: Harvest Night
 
-**Pipeline ideal:**
-1. `renderer.setPixelRatio(1)` + `{ antialias: false }` + resolução baixa (640x480)
-2. Todas texturas: NearestFilter + generateMipmaps = false
-3. **UM** shader unificado (snapping + quantização + dithering + fog)
-4. Affine texture mapping **seletivo** (só objetos próximos)
-5. Pop-in por setorização
-6. Fog abrupto (esconde pop-in + atmosfera de terror)
+**Ideal pipeline:**
+1. `renderer.setPixelRatio(1)` + `{ antialias: false }` + low resolution (640x480)
+2. All textures: NearestFilter + generateMipmaps = false
+3. **ONE** unified shader (snapping + quantization + dithering + fog)
+4. Affine texture mapping **selective** (only nearby objects)
+5. Sector-based pop-in
+6. Abrupt fog (hides pop-in + horror atmosphere)
 
-**O que NÃO fazer:**
-- Não use EffectComposer com 5+ passes → combine tudo em 1 shader
-- Não aplique affine warp em objetos distantes
-- Não use sin/cos para jitter com >5000 vértices
-- Não use múltiplos passes de pós-processamento desnecessários
+**What NOT to do:**
+- Don't use EffectComposer with 5+ passes → combine everything in 1 shader
+- Don't apply affine warp to distant objects
+- Don't use sin/cos for jitter with >5000 vertices
+- Don't use unnecessary multiple post-processing passes
 
-**Profile PS1 real vs alvo:**
-- PS1: ~180K polígonos/s teórico, ~70-100K/s realista, 320x240, ~30 FPS
-- Se rodar a 30 FPS em 640x480 com shader PSX → **acima do hardware original**
+**Real PS1 profile vs target:**
+- PS1: ~180K polygons/s theoretical, ~70-100K/s realistic, 320x240, ~30 FPS
+- If running at 30 FPS at 640x480 with PSX shader → **above original hardware**
 
 ---
 
-## 7. Links e Recursos
+## 7. Links and Resources
 
-### Repositórios GitHub
+### GitHub Repositories
 
-| Repositório | Estrelas | Descrição |
+| Repository | Stars | Description |
 |---|---|---|
-| [phoboslab/wipeout](https://github.com/phoboslab/wipeout) | 552 | WipEout PSX Model Viewer em Three.js — exemplo canônico |
-| [ad044/lainTSX](https://github.com/ad044/lainTSX) | 686 | WebGL do jogo Serial Experiments Lain PSX — **referência máxima** |
-| [mesmotronic/three-retropass](https://github.com/mesmotronic/three-retropass) | 36 | Post-process retro para Three.js (dither, quantize, pixelation) |
-| [dooji2/psx-core-shader](https://github.com/dooji2/psx-core-shader) | — | Shader PSX Minecraft (snapping, affine, dither, fog) — **referência GLSL** |
-| [grayespinoza/ps1-shaders](https://github.com/grayespinoza/ps1-shaders) | 1 | Shaders OptiFine com técnicas PS1 |
-| [gorescript/gorescript](https://github.com/gorescript/gorescript) | 350 | Retro FPS em Three.js |
-| [dannycalleri/polytron](https://github.com/dannycalleri/polytron) | 17 | Visualizador de modelos PSX TMD em Three.js |
-| [andrewboudreau/nullgrav](https://github.com/andrewboudreau/nullgrav) | — | Hover racer estilo PSX em Three.js |
+| [phoboslab/wipeout](https://github.com/phoboslab/wipeout) | 552 | WipEout PSX Model Viewer in Three.js — canonical example |
+| [ad044/lainTSX](https://github.com/ad044/lainTSX) | 686 | WebGL engine of Serial Experiments Lain PSX — **ultimate reference** |
+| [mesmotronic/three-retropass](https://github.com/mesmotronic/three-retropass) | 36 | Retro post-process for Three.js (dither, quantize, pixelation) |
+| [dooji2/psx-core-shader](https://github.com/dooji2/psx-core-shader) | — | PSX Minecraft shader (snapping, affine, dither, fog) — **GLSL reference** |
+| [grayespinoza/ps1-shaders](https://github.com/grayespinoza/ps1-shaders) | 1 | OptiFine shaders with PS1 techniques |
+| [gorescript/gorescript](https://github.com/gorescript/gorescript) | 350 | Retro FPS in Three.js |
+| [dannycalleri/polytron](https://github.com/dannycalleri/polytron) | 17 | PSX TMD model viewer in Three.js |
+| [andrewboudreau/nullgrav](https://github.com/andrewboudreau/nullgrav) | — | PSX-style hover racer in Three.js |
 
-### Artigos e Documentação
+### Articles and Documentation
 
-| Recurso | Link |
+| Resource | Link |
 |---|---|
 | Three.js ShaderMaterial Docs | https://threejs.org/docs/#api/en/materials/ShaderMaterial |
 | Three.js Post-Processing Guide | https://threejs.org/docs/#manual/en/introduction/How-to-use-post-processing |
@@ -579,25 +579,25 @@ const psxMaterial = new THREE.ShaderMaterial({
 | "Why PS1 Graphics Wobble" (YouTube) | https://www.youtube.com/watch?v=TK82U7bQhY8 |
 | Bayer Matrix Dithering | https://en.wikipedia.org/wiki/Ordered_dithering |
 
-### npm e ShaderToy
+### npm and ShaderToy
 
-| Recurso | Link/Package |
+| Resource | Link/Package |
 |---|---|
 | three-retropass package | `npm install @mesmotronic/three-retropass` |
 | PS1-style ShaderToy | https://www.shadertoy.com/results?query=psx+retro |
 
 ---
 
-## 8. Referências
+## 8. References
 
-Compilado a partir de:
-1. [phoboslab/wipeout](https://github.com/phoboslab/wipeout) — NearestFilter + materiais PSX
-2. [ad044/lainTSX](https://github.com/ad044/lainTSX) — engine WebGL Serial Experiments Lain PSX
-3. [mesmotronic/three-retropass](https://github.com/mesmotronic/three-retropass) — Bayer dithering + quantização em Three.js
-4. [dooji2/psx-core-shader](https://github.com/dooji2/psx-core-shader) — GLSL de vertex snapping, affine mapping, dithering, fog
-5. [psx-spx.consoledev.net](https://psx-spx.consoledev.net/) — Especificação técnica do PS1
-6. Documentação oficial Three.js
+Compiled from:
+1. [phoboslab/wipeout](https://github.com/phoboslab/wipeout) — NearestFilter + PSX materials
+2. [ad044/lainTSX](https://github.com/ad044/lainTSX) — WebGL engine of Serial Experiments Lain PSX
+3. [mesmotronic/three-retropass](https://github.com/mesmotronic/three-retropass) — Bayer dithering + quantization in Three.js
+4. [dooji2/psx-core-shader](https://github.com/dooji2/psx-core-shader) — GLSL of vertex snapping, affine mapping, dithering, fog
+5. [psx-spx.consoledev.net](https://psx-spx.consoledev.net/) — PS1 technical specification
+6. Official Three.js documentation
 
 ---
 
-> **Nota final:** Vertex snapping + affine texture + dithering + baixa resolução = 90% do visual PSX. O resto é polish.
+> **Final note:** Vertex snapping + affine texture + dithering + low resolution = 90% of the PSX look. The rest is polish.
