@@ -942,61 +942,134 @@ const STARE_DECAY_RATE = 1.5;         // How fast stare decays when looking away
 // --- Stalker state ---
 let stareTime = 0.0;
 
-// --- Stalker group (body + eyes) ---
+// ============================================================================
+// G005 VISUAL REWORK: Classic Grey Alien (green variant)
+// ============================================================================
+// Classic Grey alien silhouette, but green for visibility through PSX fog.
+// Iconic features: oversized bulbous head, huge almond eyes, thin body,
+// spindly limbs. All low-poly (PSX-style flat shaded primitives).
+//
+// Height: ~4.5 units total (head 1.8u + neck 0.2u + body 1.2u + legs 1.3u)
+
 const stalkerGroup = new THREE.Group();
 stalkerGroup.name = 'stalker';
 
-// Body: tall dark box — elongated, inhuman silhouette
-// Made slightly taller and narrower for a more unsettling, thin alien figure.
-const bodyGeom = new THREE.BoxGeometry(0.4, 5.5, 0.3);
-const bodyMat = new THREE.MeshStandardMaterial({
-  color: 0x050505,
-  roughness: 0.9,
-  metalness: 0.1,
+// --- Material definitions ---
+// Green skin — visible through fog, eerie under flashlight
+const skinGreen = new THREE.MeshStandardMaterial({
+  color: 0x3d7a2e,
+  roughness: 0.7,
+  metalness: 0.05,
+  flatShading: true,
 });
-const body = new THREE.Mesh(bodyGeom, bodyMat);
-body.position.y = 2.75; // Center of box at half height
-body.castShadow = true;
-body.name = 'stalkerBody';
-stalkerGroup.add(body);
-
-// Head: small dark sphere on top — adds a faint silhouette detail
-const headGeom = new THREE.SphereGeometry(0.18, 8, 8);
-const headMat = new THREE.MeshStandardMaterial({
-  color: 0x050505,
-  roughness: 0.9,
-  metalness: 0.1,
+// Darker green for limbs
+const limbGreen = new THREE.MeshStandardMaterial({
+  color: 0x2a5a1e,
+  roughness: 0.75,
+  metalness: 0.05,
+  flatShading: true,
 });
-const head = new THREE.Mesh(headGeom, headMat);
-head.position.y = 5.5;
-head.castShadow = true;
-head.name = 'stalkerHead';
-stalkerGroup.add(head);
-
-// Eyes: two small bright glowing spheres — alien, unsettling
-// Brighter and slightly larger for more visibility through fog.
-const eyeGeom = new THREE.SphereGeometry(0.15, 8, 8);
-const eyeMat = new THREE.MeshStandardMaterial({
-  color: 0xffcc00,
-  emissive: 0xffcc00,
-  emissiveIntensity: 4.0,
+// Black for eyes — deep void
+const eyeBlack = new THREE.MeshStandardMaterial({
+  color: 0x020202,
   roughness: 0.1,
+  metalness: 0.0,
+  flatShading: true,
 });
-const eyeLeft = new THREE.Mesh(eyeGeom, eyeMat);
-eyeLeft.position.set(-0.13, 5.6, 0.15);
-eyeLeft.name = 'stalkerEyeL';
-stalkerGroup.add(eyeLeft);
 
-const eyeRight = new THREE.Mesh(eyeGeom, eyeMat);
-eyeRight.position.set(0.13, 5.6, 0.15);
-eyeRight.name = 'stalkerEyeR';
-stalkerGroup.add(eyeRight);
+// --- HEAD: oversized bulbous ellipsoid ---
+// The most iconic Grey feature — a massive, elongated head.
+// Scaled sphere: slightly squished on X, stretched on Y, narrow on Z.
+const headGeom = new THREE.SphereGeometry(1, 10, 8); // Low-poly: 10x8 segments
+const headMesh = new THREE.Mesh(headGeom, skinGreen);
+headMesh.scale.set(0.85, 1.3, 0.75);  // Elongated upward, narrow front-to-back
+headMesh.position.y = 3.6;              // Top of body
+headMesh.castShadow = true;
+headMesh.name = 'stalkerHead';
+stalkerGroup.add(headMesh);
 
-// Eye glow PointLight — faint amber halo visible through fog at distance
-const eyeGlowLight = new THREE.PointLight(0xffaa00, 1.5, 10, 2);
-eyeGlowLight.position.set(0, 5.6, 0.15);
+// --- EYES: huge almond-shaped black ovals ---
+// Large, slightly slanted — the classic Grey stare.
+// Using scaled spheres for almond shape.
+const eyeGeom = new THREE.SphereGeometry(0.35, 8, 6);
+const eyeLeftMesh = new THREE.Mesh(eyeGeom, eyeBlack);
+eyeLeftMesh.scale.set(1.6, 1.0, 0.4);   // Wide almond shape
+eyeLeftMesh.position.set(-0.35, 3.85, 0.55);
+eyeLeftMesh.name = 'stalkerEyeL';
+stalkerGroup.add(eyeLeftMesh);
+
+const eyeRightMesh = new THREE.Mesh(eyeGeom, eyeBlack);
+eyeRightMesh.scale.set(1.6, 1.0, 0.4);
+eyeRightMesh.position.set(0.35, 3.85, 0.55);
+eyeRightMesh.name = 'stalkerEyeR';
+stalkerGroup.add(eyeRightMesh);
+
+// Small green point lights inside the eyes for glow effect
+const eyeGlowL = new THREE.PointLight(0x44aa22, 0.8, 4, 2);
+eyeGlowL.position.copy(eyeLeftMesh.position);
+eyeGlowL.name = 'stalkerEyeGlowL';
+stalkerGroup.add(eyeGlowL);
+
+const eyeGlowR = new THREE.PointLight(0x44aa22, 0.8, 4, 2);
+eyeGlowR.position.copy(eyeRightMesh.position);
+eyeGlowR.name = 'stalkerEyeGlowR';
+stalkerGroup.add(eyeGlowR);
+
+// Main eye glow (brighter, wider range for fog visibility)
+const eyeGlowLight = new THREE.PointLight(0x55cc33, 2.0, 12, 2);
+eyeGlowLight.position.set(0, 3.85, 0.55);
 eyeGlowLight.name = 'stalkerEyeGlow';
 stalkerGroup.add(eyeGlowLight);
+
+// --- NECK: thin connector ---
+const neckGeom = new THREE.CylinderGeometry(0.12, 0.18, 0.3, 6);
+const neck = new THREE.Mesh(neckGeom, limbGreen);
+neck.position.y = 2.6;
+neck.name = 'stalkerNeck';
+stalkerGroup.add(neck);
+
+// --- BODY: thin, short torso ---
+// Greys have proportionally small bodies.
+const bodyGeom = new THREE.CylinderGeometry(0.3, 0.35, 1.4, 8);
+const bodyMesh = new THREE.Mesh(bodyGeom, skinGreen);
+bodyMesh.position.y = 1.9;
+bodyMesh.castShadow = true;
+bodyMesh.name = 'stalkerBody';
+stalkerGroup.add(bodyMesh);
+
+// --- ARMS: two thin cylinders, hanging at sides ---
+const armGeom = new THREE.CylinderGeometry(0.08, 0.06, 1.6, 6);
+// Left arm
+const armL = new THREE.Mesh(armGeom, limbGreen);
+armL.position.set(-0.4, 1.8, 0);
+armL.rotation.z = 0.3; // Slightly outward
+armL.castShadow = true;
+armL.name = 'stalkerArmL';
+stalkerGroup.add(armL);
+
+// Right arm
+const armR = new THREE.Mesh(armGeom, limbGreen);
+armR.position.set(0.4, 1.8, 0);
+armR.rotation.z = -0.3;
+armR.castShadow = true;
+armR.name = 'stalkerArmR';
+stalkerGroup.add(armR);
+
+// --- LEGS: two thin cylinders ---
+const legGeom = new THREE.CylinderGeometry(0.1, 0.08, 1.3, 6);
+// Left leg
+const legL = new THREE.Mesh(legGeom, limbGreen);
+legL.position.set(-0.18, 0.55, 0);
+legL.castShadow = true;
+legL.name = 'stalkerLegL';
+stalkerGroup.add(legL);
+
+// Right leg
+const legR = new THREE.Mesh(legGeom, limbGreen);
+legR.position.set(0.18, 0.55, 0);
+legR.castShadow = true;
+legR.name = 'stalkerLegR';
+stalkerGroup.add(legR);
 
 // --- Spawn stalker at a random map edge position ---
 // Spawns on the map boundary, at least 20 units from player.
@@ -1069,23 +1142,36 @@ function updateStalker(delta, playerForward) {
 
   // --- VISIBILITY: stalker only visible in flashlight or very close ---
   const visible = isStalkerVisible(dist);
-  body.visible = visible;
-  head.visible = visible;
-  eyeLeft.visible = visible;
-  eyeRight.visible = visible;
-  eyeGlowLight.intensity = visible ? 1.5 : 0;
+  headMesh.visible = visible;
+  bodyMesh.visible = visible;
+  eyeLeftMesh.visible = visible;
+  eyeRightMesh.visible = visible;
+  neck.visible = visible;
+  armL.visible = visible;
+  armR.visible = visible;
+  legL.visible = visible;
+  legR.visible = visible;
+  eyeGlowLight.intensity = visible ? 2.0 : 0;
+  eyeGlowL.intensity = visible ? 0.8 : 0;
+  eyeGlowR.intensity = visible ? 0.8 : 0;
 
   // --- IDLE SWAY: subtle organic motion when standing/moving ---
-  // A slow sinusoidal sway on the body makes the figure feel alive even
-  // at distance — more unsettling than a rigid sliding box.
+  // Head bobs independently for a more disturbing, lifelike feel.
   const swayTime = performance.now() * 0.001;
-  body.rotation.z = Math.sin(swayTime * 0.8) * 0.04;
-  head.rotation.z = Math.sin(swayTime * 0.6 + 1.0) * 0.06;
+  headMesh.rotation.z = Math.sin(swayTime * 0.6 + 1.0) * 0.06;
+  bodyMesh.rotation.z = Math.sin(swayTime * 0.8) * 0.03;
+  // Arms sway slightly
+  armL.rotation.z = 0.3 + Math.sin(swayTime * 0.7) * 0.08;
+  armR.rotation.z = -0.3 + Math.sin(swayTime * 0.7 + 1.5) * 0.08;
 
   // --- EYE PULSE: emissive intensity breathes slowly ---
-  const eyePulse = 3.5 + Math.sin(swayTime * 1.5) * 0.8;
-  eyeLeft.material.emissiveIntensity = eyePulse;
-  eyeRight.material.emissiveIntensity = eyePulse;
+  // (eyes are black with no emissive, so this affects the glow lights instead)
+  const eyePulse = 1.6 + Math.sin(swayTime * 1.5) * 0.6;
+  eyeGlowLight.intensity = visible ? 2.0 * eyePulse / 1.6 : 0;
+  if (visible) {
+    eyeGlowL.intensity = 0.8 * eyePulse / 1.6;
+    eyeGlowR.intensity = 0.8 * eyePulse / 1.6;
+  }
 
   // --- STARE DETECTION ---
   // Check if player is looking at the stalker AND the stalker is visible
