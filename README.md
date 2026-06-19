@@ -1,4 +1,5 @@
 # Signs: Harvest Night 👾
+![SIGNS: HARVEST NIGHT PSX Game Cover Art](./cover.png)
 
 **A 3D horror FPS prototype** — explore a dark cornfield at night, collect 5 anomalies, and avoid a classic Grey alien stalker. Built with Three.js in PSX retro style.
 
