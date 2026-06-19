@@ -537,41 +537,63 @@ console.log(`  Sky: moon + ${STAR_COUNT} stars`);
 // player spawn and scattered gaps for anomalies.
 //
 // TUNING PARAMETERS (adjust when replacing with models):
-//   - SPRITE_FILE: single corn stalk image used as billboard texture
-//   - SPRITE_WORLD_SIZE: sprite height in world units
+//   - STALK_HEIGHT: base stalk height in units
+//   - STALK_WIDTH: width based on sprite aspect ratio (195/439 ≈ 0.444)
 
+const STALK_COUNT = 3600;
 const FIELD_HALF = 45;
 const SPACING = 1.5;
 const CLEARING_RADIUS = 5;
-const SPRITE_WORLD_SIZE = 4.5;
-const SPRITE_FILE = 'sprites/corn.png';
+const STALK_HEIGHT = 4.5;
+const STALK_WIDTH = STALK_HEIGHT * (195 / 439); // ~2.0 — matches corn.png aspect
 
-// ============================================================================
-// SPRITE CORNFIELD — Single-sprite Points-based billboards
-// ============================================================================
-// Uses one corn stalk sprite (corn.png) as a billboard texture for every stalk.
-// One Points object, one draw call — PSX-authentic flat 2D stalks.
+// --- PRNG ---
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const rng = mulberry32(42);
 
-const cornSpriteImg = new Image();
-cornSpriteImg.src = SPRITE_FILE;
-const stalkTexture = new THREE.CanvasTexture(document.createElement('canvas'));
-stalkTexture.magFilter = THREE.NearestFilter;
-stalkTexture.minFilter = THREE.NearestFilter;
-stalkTexture.generateMipmaps = false;
+// --- Stalk geometry: flat plane with correct aspect ratio ---
+// MeshStandardMaterial reacts to lighting (flashlight, ambient, moon).
+const stalkGeom = new THREE.PlaneGeometry(STALK_WIDTH, STALK_HEIGHT);
 
-cornSpriteImg.onload = () => {
-  console.log(`[Sprite] Corn stalk loaded: ${cornSpriteImg.naturalWidth}x${cornSpriteImg.naturalHeight}`);
+// --- Material with corn.png texture ---
+// Starts with a solid color until the sprite loads.
+const stalkMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  roughness: 0.85,
+  metalness: 0.0,
+  flatShading: true,
+  side: THREE.DoubleSide,
+});
 
-  // Draw sprite onto canvas + boost brightness for night visibility
-  const w = cornSpriteImg.naturalWidth;
-  const h = cornSpriteImg.naturalHeight;
+// --- InstancedMesh ---
+const cornfield = new THREE.InstancedMesh(stalkGeom, stalkMat, STALK_COUNT);
+cornfield.castShadow = true;
+cornfield.receiveShadow = true;
+cornfield.name = 'cornfield';
+
+// --- Load corn sprite and apply as texture ---
+const cornImage = new Image();
+cornImage.src = 'sprites/corn.png';
+cornImage.onload = () => {
+  console.log(`[Sprite] Corn stalk loaded: ${cornImage.naturalWidth}x${cornImage.naturalHeight}`);
+
+  // Draw onto canvas for brightness boost
+  const w = cornImage.naturalWidth;
+  const h = cornImage.naturalHeight;
   const texCanvas = document.createElement('canvas');
   texCanvas.width = w;
   texCanvas.height = h;
   const tctx = texCanvas.getContext('2d');
-  tctx.drawImage(cornSpriteImg, 0, 0);
+  tctx.drawImage(cornImage, 0, 0);
 
-  // Boost brightness ~2x — PointsMaterial is unlit, needs to pop against dark scene
+  // Boost brightness 2x — helps stalks stand out at night
   const imgData = tctx.getImageData(0, 0, w, h);
   const data = imgData.data;
   for (let p = 0; p < data.length; p += 4) {
@@ -582,57 +604,55 @@ cornSpriteImg.onload = () => {
   }
   tctx.putImageData(imgData, 0, 0);
 
-  stalkTexture.image = texCanvas;
-  stalkTexture.needsUpdate = true;
+  const cornTexture = new THREE.CanvasTexture(texCanvas);
+  cornTexture.magFilter = THREE.NearestFilter;
+  cornTexture.minFilter = THREE.NearestFilter;
+  cornTexture.generateMipmaps = false;
 
-  buildCornfield();
+  stalkMat.map = cornTexture;
+  stalkMat.color.set(0xffffff); // White — texture provides the color
+  stalkMat.needsUpdate = true;
 };
 
-function buildCornfield() {
-  function mulberry32(a) {
-    return function() {
-      a |= 0; a = a + 0x6D2B79F5 | 0;
-      var t = Math.imul(a ^ a >>> 15, 1 | a);
-      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-      return ((t ^ t >>> 14) >>> 0) / 4294967296;
-    };
+// --- Instance matrices ---
+const dummy = new THREE.Object3D();
+const stalkPositions = [];
+let placedCount = 0;
+const gridCells = Math.ceil((FIELD_HALF * 2) / SPACING);
+
+for (let ix = 0; ix < gridCells && placedCount < STALK_COUNT; ix++) {
+  for (let iz = 0; iz < gridCells && placedCount < STALK_COUNT; iz++) {
+    const wx = (ix - gridCells / 2) * SPACING;
+    const wz = (iz - gridCells / 2) * SPACING;
+    const distFromCenter = Math.sqrt(wx * wx + wz * wz);
+    if (distFromCenter < CLEARING_RADIUS) continue;
+    if (rng() < 0.15) continue;
+
+    const offsetX = (rng() - 0.5) * 0.6;
+    const offsetZ = (rng() - 0.5) * 0.6;
+    const posX = wx + offsetX;
+    const posZ = wz + offsetZ;
+    const rotY = rng() * Math.PI * 2;
+    const scaleY = 0.85 + rng() * 0.3;
+    const scaleXZ = 0.8 + rng() * 0.4;
+
+    dummy.position.set(posX, (STALK_HEIGHT / 2) * scaleY, posZ);
+    dummy.rotation.set(0, rotY, 0);
+    dummy.scale.set(scaleXZ, scaleY, 1); // Keep Z=1 — planes are flat
+    dummy.updateMatrix();
+    cornfield.setMatrixAt(placedCount, dummy.matrix);
+
+    stalkPositions.push({ x: posX, z: posZ });
+    placedCount++;
   }
-  const rng = mulberry32(42);
-  const gridCells = Math.ceil((FIELD_HALF * 2) / SPACING);
-  const positions = [];
-
-  for (let ix = 0; ix < gridCells; ix++) {
-    for (let iz = 0; iz < gridCells; iz++) {
-      const wx = (ix - gridCells / 2) * SPACING;
-      const wz = (iz - gridCells / 2) * SPACING;
-      if (Math.sqrt(wx * wx + wz * wz) < CLEARING_RADIUS) continue;
-      if (rng() < 0.15) continue;
-
-      const offsetX = (rng() - 0.5) * 0.6;
-      const offsetZ = (rng() - 0.5) * 0.6;
-      positions.push(wx + offsetX, SPRITE_WORLD_SIZE / 2, wz + offsetZ);
-    }
-  }
-
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-
-  const mat = new THREE.PointsMaterial({
-    size: SPRITE_WORLD_SIZE,
-    map: stalkTexture,
-    blending: THREE.NormalBlending,
-    depthWrite: true,
-    transparent: true,
-    sizeAttenuation: true,
-  });
-
-  const cornfield = new THREE.Points(geom, mat);
-  cornfield.name = 'cornfield';
-  cornfield.frustumCulled = true;
-  scene.add(cornfield);
-
-  console.log(`  Cornfield: ${positions.length / 3} sprite stalks (single texture)`);
 }
+
+cornfield.count = placedCount;
+cornfield.instanceMatrix.needsUpdate = true;
+cornfield.frustumCulled = true;
+scene.add(cornfield);
+
+console.log(`  Cornfield: ${placedCount} textured-plane stalks (corn.png sprite)`);
 
 // ============================================================================
 // VISUAL ENHANCEMENT: Farmhouse + ground details
