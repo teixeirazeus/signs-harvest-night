@@ -537,77 +537,58 @@ console.log(`  Sky: moon + ${STAR_COUNT} stars`);
 // player spawn and scattered gaps for anomalies.
 //
 // TUNING PARAMETERS (adjust when replacing with models):
-//   - SPRITE_SHEET_COLS / SPRITE_SHEET_ROWS: grid in the spritesheet image
-//   - SPRITE_SIZE: each stalk is 24x24px in the sheet, rendered at ~4u tall
+//   - SPRITE_FILE: single corn stalk image used as billboard texture
+//   - SPRITE_WORLD_SIZE: sprite height in world units
 
 const FIELD_HALF = 45;
 const SPACING = 1.5;
 const CLEARING_RADIUS = 5;
-const SPRITE_SIZE = 24;          // Pixels per stalk in spritesheet
-const SPRITE_WORLD_SIZE = 4.5;   // Sprite height in world units
-const SPRITE_VARIANTS = 30;      // How many different textures to extract
-const SHEET_COLS = 100;          // Spritesheet columns (2400/24)
-const SHEET_ROWS = 74;           // Spritesheet rows (1792/24)
+const SPRITE_WORLD_SIZE = 4.5;
+const SPRITE_FILE = 'sprites/corn.png';
 
 // ============================================================================
-// SPRITE CORNFIELD — Points-based from spritesheet slices
+// SPRITE CORNFIELD — Single-sprite Points-based billboards
 // ============================================================================
-// Extracts random 24×24px slices from cornfield.png spritesheet,
-// creates a pool of textures, then scatters them as billboarded sprites.
-// PSX-authentic: flat 2D stalks that always face the camera.
+// Uses one corn stalk sprite (corn.png) as a billboard texture for every stalk.
+// One Points object, one draw call — PSX-authentic flat 2D stalks.
 
-const spritesheet = document.getElementById('spritesheet');
-const stalkTextures = [];        // Pool of extracted sprite textures
-const stalkGroups = [];          // One THREE.Points per texture variant
+const cornSpriteImg = new Image();
+cornSpriteImg.src = SPRITE_FILE;
+const stalkTexture = new THREE.CanvasTexture(document.createElement('canvas'));
+stalkTexture.magFilter = THREE.NearestFilter;
+stalkTexture.minFilter = THREE.NearestFilter;
+stalkTexture.generateMipmaps = false;
 
-function buildSpritesheetTextures() {
-  if (!spritesheet || !spritesheet.complete || spritesheet.naturalWidth === 0) {
-    console.warn('[Sprite] Spritesheet not loaded yet — retrying in 100ms');
-    setTimeout(buildSpritesheetTextures, 100);
-    return;
+cornSpriteImg.onload = () => {
+  console.log(`[Sprite] Corn stalk loaded: ${cornSpriteImg.naturalWidth}x${cornSpriteImg.naturalHeight}`);
+
+  // Draw sprite onto canvas + boost brightness for night visibility
+  const w = cornSpriteImg.naturalWidth;
+  const h = cornSpriteImg.naturalHeight;
+  const texCanvas = document.createElement('canvas');
+  texCanvas.width = w;
+  texCanvas.height = h;
+  const tctx = texCanvas.getContext('2d');
+  tctx.drawImage(cornSpriteImg, 0, 0);
+
+  // Boost brightness ~2x — PointsMaterial is unlit, needs to pop against dark scene
+  const imgData = tctx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+  for (let p = 0; p < data.length; p += 4) {
+    if (data[p + 3] === 0) continue;
+    data[p]     = Math.min(255, data[p] * 2.0);
+    data[p + 1] = Math.min(255, data[p + 1] * 2.0);
+    data[p + 2] = Math.min(255, data[p + 2] * 2.0);
   }
-  console.log(`[Sprite] Spritesheet loaded: ${spritesheet.naturalWidth}x${spritesheet.naturalHeight}`);
+  tctx.putImageData(imgData, 0, 0);
 
-  // Extract random slices from the spritesheet
-  for (let i = 0; i < SPRITE_VARIANTS; i++) {
-    const col = Math.floor(Math.random() * SHEET_COLS);
-    const row = Math.floor(Math.random() * SHEET_ROWS);
-    const sx = col * SPRITE_SIZE;
-    const sy = row * SPRITE_SIZE;
+  stalkTexture.image = texCanvas;
+  stalkTexture.needsUpdate = true;
 
-    const texCanvas = document.createElement('canvas');
-    texCanvas.width = SPRITE_SIZE;
-    texCanvas.height = SPRITE_SIZE;
-    const tctx = texCanvas.getContext('2d');
-    tctx.drawImage(spritesheet, sx, sy, SPRITE_SIZE, SPRITE_SIZE, 0, 0, SPRITE_SIZE, SPRITE_SIZE);
-
-    // Boost brightness — sprites are very dark (R~30-50) and PointsMaterial
-    // is unlit, so they disappear against the night scene background.
-    const imgData = tctx.getImageData(0, 0, SPRITE_SIZE, SPRITE_SIZE);
-    const data = imgData.data;
-    for (let p = 0; p < data.length; p += 4) {
-      // Skip fully transparent pixels
-      if (data[p + 3] === 0) continue;
-      // Boost RGB by ~3x, clamp to 255
-      data[p]     = Math.min(255, data[p] * 3.0);
-      data[p + 1] = Math.min(255, data[p + 1] * 3.0);
-      data[p + 2] = Math.min(255, data[p + 2] * 3.0);
-    }
-    tctx.putImageData(imgData, 0, 0);
-
-    const texture = new THREE.CanvasTexture(texCanvas);
-    texture.magFilter = THREE.NearestFilter;
-    texture.minFilter = THREE.NearestFilter;
-    texture.generateMipmaps = false;
-    stalkTextures.push(texture);
-  }
-
-  console.log(`[Sprite] ${stalkTextures.length} stalk textures extracted from spritesheet`);
   buildCornfield();
-}
+};
 
 function buildCornfield() {
-  // PRNG for reproducible layout
   function mulberry32(a) {
     return function() {
       a |= 0; a = a + 0x6D2B79F5 | 0;
@@ -617,10 +598,8 @@ function buildCornfield() {
     };
   }
   const rng = mulberry32(42);
-
   const gridCells = Math.ceil((FIELD_HALF * 2) / SPACING);
-  // Bucket positions by texture index
-  const buckets = Array.from({ length: SPRITE_VARIANTS }, () => []);
+  const positions = [];
 
   for (let ix = 0; ix < gridCells; ix++) {
     for (let iz = 0; iz < gridCells; iz++) {
@@ -631,47 +610,29 @@ function buildCornfield() {
 
       const offsetX = (rng() - 0.5) * 0.6;
       const offsetZ = (rng() - 0.5) * 0.6;
-      const posX = wx + offsetX;
-      const posZ = wz + offsetZ;
-      // Sprite centered vertically at half height
-      const posY = SPRITE_WORLD_SIZE / 2;
-
-      const bucket = Math.floor(Math.random() * SPRITE_VARIANTS);
-      buckets[bucket].push(posX, posY, posZ);
+      positions.push(wx + offsetX, SPRITE_WORLD_SIZE / 2, wz + offsetZ);
     }
   }
 
-  // Create one Points object per texture variant
-  let totalStalks = 0;
-  for (let i = 0; i < SPRITE_VARIANTS; i++) {
-    const positions = buckets[i];
-    if (positions.length === 0) continue;
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
 
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const mat = new THREE.PointsMaterial({
+    size: SPRITE_WORLD_SIZE,
+    map: stalkTexture,
+    blending: THREE.NormalBlending,
+    depthWrite: true,
+    transparent: true,
+    sizeAttenuation: true,
+  });
 
-    const mat = new THREE.PointsMaterial({
-      size: SPRITE_WORLD_SIZE,
-      map: stalkTextures[i],
-      blending: THREE.NormalBlending,
-      depthWrite: true,
-      transparent: true,
-      sizeAttenuation: true,
-    });
+  const cornfield = new THREE.Points(geom, mat);
+  cornfield.name = 'cornfield';
+  cornfield.frustumCulled = true;
+  scene.add(cornfield);
 
-    const points = new THREE.Points(geom, mat);
-    points.name = 'cornfield_sprite_' + i;
-    points.frustumCulled = true;
-    scene.add(points);
-    stalkGroups.push(points);
-    totalStalks += positions.length / 3;
-  }
-
-  console.log(`  Cornfield: ${totalStalks} sprite stalks from ${stalkGroups.length} texture variants`);
+  console.log(`  Cornfield: ${positions.length / 3} sprite stalks (single texture)`);
 }
-
-// Start loading (retries until spritesheet is available)
-buildSpritesheetTextures();
 
 // ============================================================================
 // VISUAL ENHANCEMENT: Farmhouse + ground details
