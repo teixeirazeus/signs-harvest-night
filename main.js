@@ -626,8 +626,7 @@ const gridCells = Math.ceil((FIELD_HALF * 2) / SPACING);
 // Barn at (8, -5): similar size, slightly smaller
 // Bounds: minX, maxX, minZ, maxZ with 2-unit margin for walls+roof
 const BUILDING_ZONES = [
-  { x1: -6, x2: 6,    z1: -14, z2: -2 },   // Farmhouse — wider margin
-  { x1: 4,  x2: 12.5, z1: -9,  z2: 0.5 },  // Barn — wider margin
+  { x1: -6, x2: 6, z1: -14, z2: -2 },   // Farmhouse only
 ];
 
 function isInsideBuildings(px, pz) {
@@ -742,32 +741,6 @@ houseGroup.add(door);
 houseGroup.position.set(0, 0, -8);
 scene.add(houseGroup);
 
-// --- BARN ---
-// Smaller, wider structure to the right of the house.
-const barnGroup = new THREE.Group();
-barnGroup.name = 'barn';
-
-const barnBody = new THREE.Mesh(
-  new THREE.BoxGeometry(6, 3, 5),
-  new THREE.MeshStandardMaterial({ color: 0x2a1a12, roughness: 0.92 })
-);
-barnBody.position.y = 1.5;
-barnBody.castShadow = true;
-barnBody.receiveShadow = true;
-barnGroup.add(barnBody);
-
-// Barn roof — flat gable
-const barnRoof = new THREE.Mesh(
-  new THREE.BoxGeometry(6.4, 0.3, 5.4),
-  new THREE.MeshStandardMaterial({ color: 0x100a08, roughness: 0.95 })
-);
-barnRoof.position.y = 3.15;
-barnRoof.castShadow = true;
-barnGroup.add(barnRoof);
-
-barnGroup.position.set(8, 0, -5);
-scene.add(barnGroup);
-
 // --- SCATTERED DEBRIS ---
 // Small rocks and crates scattered around the clearing for visual texture.
 const debrisMat = new THREE.MeshStandardMaterial({ color: 0x252018, roughness: 0.95 });
@@ -826,7 +799,7 @@ for (let i = 0; i < fencePosts; i++) {
   scene.add(post);
 }
 
-console.log('  Structures: farmhouse + barn + 8 debris items + 16 fence posts');
+console.log('  Structures: farmhouse + 8 debris items + 16 fence posts');
 
 // ============================================================================
 // EASTER EGG: Low-poly cow (PSX style) — click to hear moo
