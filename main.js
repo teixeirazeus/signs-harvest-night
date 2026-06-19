@@ -622,6 +622,22 @@ const stalkPositions = [];
 let placedCount = 0;
 const gridCells = Math.ceil((FIELD_HALF * 2) / SPACING);
 
+// --- Building clearing rectangles ---
+// Farmhouse at (0, -8): 5×4 body, roof overhang ~3m each side
+// Barn at (8, -5): similar size, slightly smaller
+// Bounds: minX, maxX, minZ, maxZ with 2-unit margin for walls+roof
+const BUILDING_ZONES = [
+  { x1: -4.5, x2: 4.5,  z1: -12, z2: -4 },  // Farmhouse + margin
+  { x1: 5,    x2: 11,   z1: -8,  z2: -1 },  // Barn + margin
+];
+
+function isInsideBuildings(px, pz) {
+  for (const b of BUILDING_ZONES) {
+    if (px >= b.x1 && px <= b.x2 && pz >= b.z1 && pz <= b.z2) return true;
+  }
+  return false;
+}
+
 for (let ix = 0; ix < gridCells && placedCount < STALK_COUNT; ix++) {
   for (let iz = 0; iz < gridCells && placedCount < STALK_COUNT; iz++) {
     const wx = (ix - gridCells / 2) * SPACING;
@@ -634,6 +650,7 @@ for (let ix = 0; ix < gridCells && placedCount < STALK_COUNT; ix++) {
     const offsetZ = (rng() - 0.5) * 0.6;
     const posX = wx + offsetX;
     const posZ = wz + offsetZ;
+    if (isInsideBuildings(posX, posZ)) continue; // Don't put stalks in buildings
     const rotY = rng() * Math.PI * 2;
     const scaleY = 0.85 + rng() * 0.3;
     const scaleXZ = 0.8 + rng() * 0.4;
