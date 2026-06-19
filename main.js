@@ -545,7 +545,7 @@ const FIELD_HALF = 45;
 const SPACING = 1.5;
 const CLEARING_RADIUS = 5;
 const STALK_HEIGHT = 4.5;
-const STALK_WIDTH = STALK_HEIGHT * (195 / 439); // ~2.0 — matches corn.png aspect
+const STALK_WIDTH = STALK_HEIGHT * (195 / 439) * 0.5; // ~1.0 — narrower, less wall-like
 
 // --- PRNG ---
 function mulberry32(a) {
@@ -626,8 +626,8 @@ const gridCells = Math.ceil((FIELD_HALF * 2) / SPACING);
 // Barn at (8, -5): similar size, slightly smaller
 // Bounds: minX, maxX, minZ, maxZ with 2-unit margin for walls+roof
 const BUILDING_ZONES = [
-  { x1: -4.5, x2: 4.5,  z1: -12, z2: -4 },  // Farmhouse + margin
-  { x1: 5,    x2: 11,   z1: -8,  z2: -1 },  // Barn + margin
+  { x1: -6, x2: 6,    z1: -14, z2: -2 },   // Farmhouse — wider margin
+  { x1: 4,  x2: 12.5, z1: -9,  z2: 0.5 },  // Barn — wider margin
 ];
 
 function isInsideBuildings(px, pz) {
