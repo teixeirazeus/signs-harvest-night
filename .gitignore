@@ -1,3 +1,5 @@
+.specstory/
+
 # Node / dependencies (if any in future)
 node_modules/
 package-lock.json
