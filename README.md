@@ -95,7 +95,3 @@ signs-harvest-night/
 ## 📜 License
 
 MIT — see [LICENSE](LICENSE).
-
----
-
-*Made for the Hermes Agent — retro gaming meets AI-assisted development.*
