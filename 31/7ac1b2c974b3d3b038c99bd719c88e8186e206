@@ -1,0 +1,14 @@
+README.md
+  h_0cfb1473e5b407 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "317ac1b2c974b3d3b038c99bd719c88e8186e206",
+  "prompts": {},
+  "humans": {
+    "h_0cfb1473e5b407": {
+      "author": "Thiago da Silva Teixeira <teixeira.zeus@gmail.com>"
+    }
+  }
+}
