@@ -581,6 +581,20 @@ function buildSpritesheetTextures() {
     const tctx = texCanvas.getContext('2d');
     tctx.drawImage(spritesheet, sx, sy, SPRITE_SIZE, SPRITE_SIZE, 0, 0, SPRITE_SIZE, SPRITE_SIZE);
 
+    // Boost brightness — sprites are very dark (R~30-50) and PointsMaterial
+    // is unlit, so they disappear against the night scene background.
+    const imgData = tctx.getImageData(0, 0, SPRITE_SIZE, SPRITE_SIZE);
+    const data = imgData.data;
+    for (let p = 0; p < data.length; p += 4) {
+      // Skip fully transparent pixels
+      if (data[p + 3] === 0) continue;
+      // Boost RGB by ~3x, clamp to 255
+      data[p]     = Math.min(255, data[p] * 3.0);
+      data[p + 1] = Math.min(255, data[p + 1] * 3.0);
+      data[p + 2] = Math.min(255, data[p + 2] * 3.0);
+    }
+    tctx.putImageData(imgData, 0, 0);
+
     const texture = new THREE.CanvasTexture(texCanvas);
     texture.magFilter = THREE.NearestFilter;
     texture.minFilter = THREE.NearestFilter;
