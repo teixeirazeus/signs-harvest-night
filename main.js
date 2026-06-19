@@ -570,6 +570,8 @@ const stalkMat = new THREE.MeshStandardMaterial({
   metalness: 0.0,
   flatShading: true,
   side: THREE.DoubleSide,
+  transparent: true,       // Required: honor alpha channel from texture
+  alphaTest: 0.1,          // Discard nearly-transparent fragments
 });
 
 // --- InstancedMesh ---
